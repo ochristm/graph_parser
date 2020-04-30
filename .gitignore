@@ -3,5 +3,6 @@
 *.dbf
 *.prj
 *.shx
+*.cpg
 *.csv
 *.pyc
