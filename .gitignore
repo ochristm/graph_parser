@@ -1,0 +1,7 @@
+*.osm
+*.shp
+*.dbf
+*.prj
+*.shx
+*.csv
+*.pyc
