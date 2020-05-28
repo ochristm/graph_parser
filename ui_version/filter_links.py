@@ -54,7 +54,10 @@ buff_km = gdf_from_osm.buff_km
 gdf_poly = gdf_from_osm.gdf_poly
 # gdf_poly = ox.gdf_from_place(place, which_result=2, buffer_dist=int(buff_km)*1000)
 # gdf_poly.crs='epsg:4326'
-
+path_data = '.\\data\\' + str_date
+path_res = path_data + '\\res'
+path_res_edges = path_res + '\\edges'
+path_res_nodes = path_res + '\\nodes'
 
 
 # оставить только те ребра, которые внутри полигона
@@ -114,13 +117,16 @@ city_graph['other_tags'] = list_new_columns[1]
 # до фильтрации сохранить нужные ребра трамвайных и жд путей
 rail_tram = city_graph[(city_graph['other_tags'].str.contains('=>"tram"', na=False))]
 rail_main = city_graph[(city_graph['other_tags'].str.contains('"usage"=>"main"', na=False))]
+rail_subw = city_graph[(city_graph['other_tags'].str.contains('subway', na=False))]
 
 # удаление строк, содержаших ненужные значения
 #  списки ненужных значений, которые надо будет удалить
 lst_highway_notok = ['steps', 'pedestrian', 'footway', 'path', 'raceway', 'road', 'track', 'planned', 'proposed']
 
-lst_ot_notok = ['admin_level','aeroway','attraction','building','ferry','grass','land','leaf_type',
-                'leisure','mud','natural','piste','planned','power','private','proposed','wood']
+lst_ot_notok = ['access"=>"no','admin_level','aeroway','attraction','building',
+                'ferry','grass','land','leaf_type',
+                'leisure','mud','natural','piste',
+                'planned','power','private','proposed','wood']
 # some are ok: unpaved,description
 
 
@@ -133,9 +139,41 @@ city_graph = city_graph[
     & (~city_graph['other_tags'].str.contains('|'.join(lst_ot_notok), na=False))
     & (~(city_graph['other_tags'].str.contains("sand", na=False) & city_graph.name.isna()))
     & (~((city_graph.z_order == 0) & (city_graph.name.isna())))
+    & (~((city_graph.highway == 'construction') 
+          & (city_graph.other_tags.isna()) & (city_graph.name.isna())))
     & (~((city_graph.highway == 'service') & (city_graph.name.isna())))
                              ].reset_index(drop=True)
 #
+#############################
+# constructions - temporary changes in the road 
+# no name and no tags - new road, should be deleted
+constr = city_graph[(((city_graph.highway == 'construction') 
+                          & ~(city_graph.other_tags.isna()) 
+                          & ~(city_graph.name.isna())) 
+                         | ((city_graph.other_tags.str.contains("bridge", na=False)) 
+                            & (~(city_graph.name.isna()))
+                            & ((city_graph.highway.isna()))))].reset_index(drop=True)
+#
+
+lst_contstr_name=list(constr.name.unique())
+i=0
+for i in range(len(lst_contstr_name)):
+    one_name = lst_contstr_name[i]
+    df_small = constr[constr.name == one_name].reset_index(drop=True)
+    sj_df = gpd.sjoin(df_small, city_graph[['highway', 'name', 'geometry']], 
+                      how='inner', op='intersects').drop("index_right", axis=1)
+    lst_hw = list(sj_df[((sj_df.name_right == one_name) 
+                         & (sj_df.highway_right != 'construction') 
+                         & ((sj_df.highway_right.astype(str) != 'None')))].highway_right.unique())
+    try:
+        new_hw = lst_hw[0]
+        for j in range(len(df_small)):
+            ind_oi = list(city_graph.osm_id).index(df_small.osm_id[j])
+            city_graph.highway[ind_oi] = new_hw
+    except:
+        pass
+# 
+#############################
 
 # удаление ненужных и добавление нужных жд и трамвайных путей
 city_graph = city_graph[
@@ -144,6 +182,7 @@ city_graph = city_graph[
                      ]
 city_graph = city_graph.append(rail_tram)
 city_graph = city_graph.append(rail_main)
+city_graph = city_graph.append(rail_subw)
 
 city_graph = city_graph.reset_index(drop=True)
 
@@ -722,7 +761,13 @@ for i in (range(len(graph_full))):
     if (('oneway"=>"yes' in str(graph_full.other_tags[i])) 
             | ('oneway"=>"1' in str(graph_full.other_tags[i]))):
             if graph_full.direction[i] == 'direct':
-                list_lanes.append(int_lanes)
+                if '"lanes"=>"' in str(graph_full.other_tags[i]):
+                    str1 = str(graph_full.other_tags[i])
+                    str2 = str1[str1.find('"lanes"=>"') : ].split(",", 1)[0]
+                    int_lanes = int(reg.sub('', str2))
+                    list_lanes.append(int_lanes)
+                else:
+                    list_lanes.append(1)
             else:
                 list_lanes.append(0)
     else:
@@ -806,6 +851,44 @@ lst_psv_nodes = list(set(lst_psv_nodes))
 lst_all_veh_nodes = list(set(lst_all_veh_nodes))
 # lst_car_nodes = list(set(lst_car_nodes))
 
+##############################
+# add type link
+
+lst_typeno = []
+i=0
+for i in range(len(graph_full)):
+    if "railway" in str(graph_full.other_tags[i]):
+        if "subway" in str(graph_full.other_tags[i]):
+            lst_typeno.append(10)
+        elif "tram" in str(graph_full.other_tags[i]):
+            lst_typeno.append(40)
+        else:
+            lst_typeno.append(20)
+    elif graph_full.NUMLANES[i] == 0:
+        lst_typeno.append(0)
+    else:
+        if graph_full.highway[i] == 'trunk':
+            lst_typeno.append(1)
+        elif graph_full.highway[i] == 'primary':
+            lst_typeno.append(2)
+        elif graph_full.highway[i] == 'secondary':
+            lst_typeno.append(3)
+        elif graph_full.highway[i] == 'tertiary':
+            lst_typeno.append(4)
+        elif graph_full.highway[i] in ['trunk_link', 'primary_link', 'secondary_link', 'tertiary_link']:
+            lst_typeno.append(5)
+        elif graph_full.name[i] != None:
+            lst_typeno.append(6)
+        else:
+            lst_typeno.append(7)
+# 
+
+try:
+    graph_full['TYPENO_2'] = lst_typeno
+except:
+    print("Error_typeno")
+
+##############################
 
 graph_full.crs='epsg:4326'
 graph_full = graph_full.rename(columns={'link_id':'NO', 'mm_len':'LENGTH', 
@@ -824,9 +907,11 @@ for i in range(len(graph_full_shp)):
     if len(str(graph_full_shp.other_tags[i])) > 254:
         graph_full_shp.other_tags[i] = graph_full_shp.other_tags[i][:254]
 # 
-graph_full_shp.to_file('./data/res/edges/new_graph_{}_{}_{}.shp'.format(buff_km, place, str_date), encoding='utf-8')
+graph_full_shp.to_file('{}\\new_graph_{}_{}_{}.shp'.format(path_res_edges,buff_km, place, str_date), encoding='utf-8')
 
 all_nodes = all_nodes.rename(columns={'nodeID':'NO'})
-all_nodes.to_file('./data/res/nodes/nodes_{}_{}_{}.shp'.format(buff_km, place, str_date), encoding='utf-8')
+all_nodes['XCOORD'] = all_nodes.geometry.x
+all_nodes['YCOORD'] = all_nodes.geometry.y
+all_nodes.to_file('{}\\nodes_{}_{}_{}.shp'.format(path_res_nodes,buff_km, place, str_date), encoding='utf-8')
 
 print("Done")

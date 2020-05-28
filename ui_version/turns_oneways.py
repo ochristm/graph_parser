@@ -35,18 +35,7 @@ import math
 
 import math
 from math import degrees, acos
-
-#path_new = os.getcwd()
-path_tuon = './data/turn_onew'
-#path_tuon = path_data = '\\turn_onew'
-
-try:
-    os.mkdir(path_tuon)
-    print ("Создана директория %s \n" % path_tuon)
-except OSError:
-    print ("Не удалось создать директорию: %s \n" % path_tuon)
-    print("Возможно, она уже создана")
-
+###########################
 
 #filename = './data/map_2_Yaroslavl,Russia_20200430_2004.osm'
 # ./data/raw/osm/map_2_Ярославль_20200521_0934.osm
@@ -60,27 +49,51 @@ while (os.path.isfile(filename) != True):
     if os.path.isfile(filename) == False:
         print("Файл не найден, попробуйте снова")
     else:
-        print("Файл найден,", filename)
+        print("Файл найден")
 # 
-print("Wait...")
+
 
 list_split = filename[:-4].rsplit("_")
 str_date = list_split[-2] + "_" + list_split[-1]
 place = list_split[-3]
 buff_km = list_split[-4]
 
+###########################
+#path_new = os.getcwd()
+path_data = '.\\data\\' + str_date
+path_tuon = path_data + '\\turn_onew'
+#path_tuon = path_data = '\\turn_onew'
 
+path_raw = path_data + '\\raw'
+path_raw_csv = path_raw + '\\csv'
+path_raw_shp = path_raw + '\\shp'
+path_raw_shp_layers = path_raw_shp + '\\layers'
 
-new_graph = gpd.read_file(r'./data/res/edges/new_graph_{}_{}_{}.shp'.format(buff_km, place, str_date), encoding = 'utf-8')
-all_nodes = gpd.read_file(r'./data/res/nodes/nodes_{}_{}_{}.shp'.format(buff_km, place, str_date), encoding = 'utf-8')
+path_res = path_data + '\\res'
+path_res_edges = path_res + '\\edges'
+path_res_nodes = path_res + '\\nodes'
 
-gdf_other_lines = gpd.read_file(r'./data/raw/shp/layers/other_lines_{}_{}_{}.shp'.format(buff_km, place, str_date), encoding = 'utf-8')
+try:
+    os.mkdir(path_tuon)
+    print ("Создана директория %s \n" % path_tuon)
+except OSError:
+    print ("Не удалось создать директорию: %s \n" % path_tuon)
+    print("Возможно, она уже создана")
+#
+print("Please wait...")
 
-gdf_other_points = gpd.read_file(r'./data/raw/shp/layers/other_points_{}_{}_{}.shp'.format(buff_km, place, str_date), encoding = 'utf-8')
+###########################
 
-csv_ot = pd.read_csv(r'./data/raw/csv/csv_{}_{}_{}.csv'.format(buff_km, place, str_date), encoding = 'utf-8', sep=';')
+new_graph = gpd.read_file(r'{}\\new_graph_{}_{}_{}.shp'.format(path_res_edges,buff_km, place, str_date), encoding = 'utf-8')
+all_nodes = gpd.read_file(r'{}\\nodes_{}_{}_{}.shp'.format(path_res_nodes,buff_km, place, str_date), encoding = 'utf-8')
 
+gdf_other_lines = gpd.read_file(r'{}\\other_lines_{}_{}_{}.shp'.format(path_raw_shp_layers,buff_km, place, str_date), encoding = 'utf-8')
 
+gdf_other_points = gpd.read_file(r'{}\\other_points_{}_{}_{}.shp'.format(path_raw_shp_layers,buff_km, place, str_date), encoding = 'utf-8')
+
+csv_ot = pd.read_csv(r'{}\\csv_{}_{}_{}.csv'.format(path_raw_csv,buff_km, place, str_date), encoding = 'utf-8', sep=';')
+
+all_nodes = all_nodes[['NO', 'geometry']]
 
 # подтянуть обрезавшиеся теги (shp обрезает до 255 символов)
 dict_ot = {}
@@ -778,6 +791,6 @@ final_fvt = final_fvt.append(except_psv).append(all_zero_car).reset_index(drop=T
 final_fvt = final_fvt.drop_duplicates(final_fvt.columns).reset_index(drop=True)
 ####################################
 
-final_fvt.to_csv("{}/final_fvt_{}_{}_{}.csv".format(path_tuon, buff_km, place, str_date), sep=";", encoding="utf-8", index=False)
+final_fvt.to_csv("{}\\final_fvt_{}_{}_{}.csv".format(path_tuon, buff_km, place, str_date), sep=";", encoding="utf-8", index=False)
 
 print("Done")

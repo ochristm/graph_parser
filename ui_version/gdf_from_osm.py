@@ -30,6 +30,7 @@ import os.path
 # filename = './data/map_2_Yaroslavl,Russia_20200430_2004.osm'
 #filename = ''
 filename = parse_osm.filename
+poly_osmid = parse_osm.poly_osmid
 while (os.path.isfile(filename) != True):
     print("Введите путь и название файла OSM, пример:")
     print("./data/map_2_Yaroslavl,Russia_20200430_2004.osm")
@@ -51,6 +52,13 @@ buff_km = list_split[-4]
 
 #gdf_poly = parse_osm.gdf_poly
 #buff_km = parse_osm.buff_km
+#############################
+path_data = '.\\data\\' + str_date
+path_raw = path_data + '\\raw'
+path_raw_csv = path_raw + '\\csv'
+path_raw_shp = path_raw + '\\shp'
+path_raw_shp_layers = path_raw_shp + '\\layers'
+path_raw_shp_poly = path_raw_shp + '\\poly'
 
 #############################
 #gdf_poly = ox.gdf_from_place(place, which_result=2, buffer_dist=int(buff_km)*1000)
@@ -83,16 +91,19 @@ def GirsGdf(lr_nm):
     del new_df
     return new_gdf
 #
-
-gdf_lines = GirsGdf(1)
-gdf_points = GirsGdf(0)
-gdf_multilines = GirsGdf(2)
-gdf_multipolygons = GirsGdf(3)
+try:
+    gdf_lines = GirsGdf(1)
+    gdf_points = GirsGdf(0)
+    gdf_multilines = GirsGdf(2)
+    gdf_multipolygons = GirsGdf(3)
+except(RuntimeError):
+    print("RuntimeError, data is too big")
+    exit()
 #gdf_other = GirsGdf(4)
 del lrs
 
 #extract polygon of the city from all polygons
-gdf_poly = gdf_multipolygons[gdf_multipolygons.place=='city'][['osm_id', 'name', 
+gdf_poly = gdf_multipolygons[gdf_multipolygons.osm_id==poly_osmid][['osm_id', 'name', 
                                                               'place', 'other_tags', 'geometry']].reset_index(drop=True)
 gdf_poly.geometry[0] = gdf_poly.geometry[0][0]
 if int(buff_km) > 0:
@@ -271,37 +282,37 @@ other_points['geo_line'] = other_points['geo_line'].astype(str)
 ###############################
 # saving shp
 
-print("Do you want to save gdfs to shps?y/n")
-answ_save = input()
-if answ_save == 'y':
+# print("Do you want to save gdfs to shps?y/n")
+# answ_save = input()
+# if answ_save == 'y':
 
-    other_lines.to_file('./data/raw/shp/layers/other_lines_{}_{}_{}.shp'.format(buff_km, place, str_date), encoding='utf-8')
-    other_points.to_file('./data/raw/shp/layers/other_points_{}_{}_{}.shp'.format(buff_km, place, str_date), encoding='utf-8')
-    # if len(other_others) > 0:
-        # other_others.to_file('./data/raw/shp/layers/other_others_{}_{}_{}.shp'.format(buff_km, place, str_date), encoding='utf-8')
-    #
+other_lines.to_file('{}\\other_lines_{}_{}_{}.shp'.format(path_raw_shp_layers,buff_km, place, str_date), encoding='utf-8')
+other_points.to_file('{}\\other_points_{}_{}_{}.shp'.format(path_raw_shp_layers,buff_km, place, str_date), encoding='utf-8')
+# if len(other_others) > 0:
+    # other_others.to_file('./data/raw/shp/layers/other_others_{}_{}_{}.shp'.format(buff_km, place, str_date), encoding='utf-8')
+#
 
-    gdf_lines[['osm_id', 'name', 'highway', 'waterway', 'aerialway',
-               'barrier', 'man_made', 'z_order', 
-               'other_tags']].to_csv("./data/raw/csv/csv_{}_{}_{}.csv".format(buff_km, place, str_date), sep=";", encoding="utf-8-sig", index=False)
-    #
-    # сохранение без геометрии - нужны только поля.
-    # если кодировка просто utf-8, то сохраняются каракули вместо букв, 
-    # а windows-1251 или cp1251 не декодируют какие-то конкретные символы, я хз почему
-    
-    # обрезать для сохранения в шейп
-    gdf_lines_shp = gdf_lines.copy()
-    i=0
-    
-    for i in range(len(gdf_lines_shp)):
-        if len(str(gdf_lines_shp.other_tags[i])) > 254:
-            gdf_lines_shp.other_tags[i] = gdf_lines_shp.other_tags[i][:254]
+gdf_lines[['osm_id', 'name', 'highway', 'waterway', 'aerialway',
+           'barrier', 'man_made', 'z_order', 
+           'other_tags']].to_csv("{}\\csv_{}_{}_{}.csv".format(path_raw_csv,buff_km, place, str_date), sep=";", encoding="utf-8-sig", index=False)
+#
+# сохранение без геометрии - нужны только поля.
+# если кодировка просто utf-8, то сохраняются каракули вместо букв, 
+# а windows-1251 или cp1251 не декодируют какие-то конкретные символы, я хз почему
 
-    gdf_lines_shp.to_file("./data/raw/shp/layers/gdf_lines_{}_{}_{}.shp".format(buff_km, place, str_date), encoding="utf-8")
-    gdf_points.to_file("./data/raw/shp/layers/gdf_points_{}_{}_{}.shp".format(buff_km, place, str_date), encoding="utf-8")
-    gdf_multilines.to_file("./data/raw/shp/layers/gdf_multilines_{}_{}_{}.shp".format(buff_km, place, str_date), encoding="utf-8")
-    gdf_multipolygons.to_file("./data/raw/shp/layers/gdf_multipolygons_{}_{}_{}.shp".format(buff_km, place, str_date), encoding="utf-8")
-    gdf_poly.to_file('./data/raw/shp/poly/poly_{}_{}_{}.shp'.format(buff_km, place, str_date), encoding='utf-8')
-    print("All shps are saved")
+# обрезать для сохранения в шейп
+gdf_lines_shp = gdf_lines.copy()
+i=0
+
+for i in range(len(gdf_lines_shp)):
+    if len(str(gdf_lines_shp.other_tags[i])) > 254:
+        gdf_lines_shp.other_tags[i] = gdf_lines_shp.other_tags[i][:254]
+
+gdf_lines_shp.to_file("{}\\gdf_lines_{}_{}_{}.shp".format(path_raw_shp_layers,buff_km, place, str_date), encoding="utf-8")
+gdf_points.to_file("{}\\gdf_points_{}_{}_{}.shp".format(path_raw_shp_layers,buff_km, place, str_date), encoding="utf-8")
+gdf_multilines.to_file("{}\\gdf_multilines_{}_{}_{}.shp".format(path_raw_shp_layers,buff_km, place, str_date), encoding="utf-8")
+gdf_multipolygons.to_file("{}\\gdf_multipolygons_{}_{}_{}.shp".format(path_raw_shp_layers,buff_km, place, str_date), encoding="utf-8")
+gdf_poly.to_file('{}\\poly_{}_{}_{}.shp'.format(path_raw_shp_poly,buff_km, place, str_date), encoding='utf-8')
+print("All raw shps are saved")
 #
 print("Done")

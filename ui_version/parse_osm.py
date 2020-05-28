@@ -1,11 +1,11 @@
-print("Прежде чем запускать скрипт убедитесь, что выполнены все условия в readme.txt")
-print("All ok?y/n")
-answ_demand = input()
+# print("Прежде чем запускать скрипт убедитесь, что выполнены все условия в readme.txt")
+# print("All ok?y/n")
+# answ_demand = input()
 
-if answ_demand != "y":
-    print("Условия не выполнены, скрипт завершится...")
-    exit()
-#
+# if answ_demand != "y":
+    # print("Условия не выполнены, скрипт завершится...")
+    # exit()
+# #
 
 print()
 print("________________________________________")
@@ -39,14 +39,16 @@ warnings.filterwarnings("ignore")
 
 ###############################################
 
-import os
+str_date = "{:%Y%m%d_%H%M}".format(datetime.now())
+
 path_new = os.getcwd()
-path_data = path_new + '\\data'
+path_total = path_new + '\\data'
+path_data = path_total + '\\' + str_date
 path_raw = path_data + '\\raw'
 path_raw_osm = path_raw + '\\osm'
-path_raw_shp = path_raw + '\\shp'
 path_raw_csv = path_raw + '\\csv'
-path_raw_shp_lines = path_raw_shp + '\\layers'
+path_raw_shp = path_raw + '\\shp'
+path_raw_shp_layers = path_raw_shp + '\\layers'
 path_raw_shp_poly = path_raw_shp + '\\poly'
 
 path_res = path_data + '\\res'
@@ -54,7 +56,7 @@ path_res_edges = path_res + '\\edges'
 path_res_nodes = path_res + '\\nodes'
 
 list_paths = [path_data, path_raw, path_raw_osm, 
-    path_raw_shp, path_raw_csv, path_raw_shp_lines, path_raw_shp_poly, 
+    path_raw_shp, path_raw_csv, path_raw_shp_layers, path_raw_shp_poly, 
     path_res, path_res_edges, path_res_nodes]
 
 for path in list_paths:
@@ -63,8 +65,8 @@ for path in list_paths:
     except OSError:
         print ("Не удалось создать директорию: %s \n" % path)
         print("Возможно, она уже создана")
-    else:
-        print ("Создана директория %s \n" % path)
+    # else:
+        # print ("Создана директория %s \n" % path)
 # 
 
 ###############################################
@@ -73,13 +75,13 @@ for path in list_paths:
 #здесь надо указать точное название населенного пункта, проверить, совпадает ли на осм
 # проверить можно на этом сайте:
 # https://osmnames.org/
-str_date = "{:%Y%m%d_%H%M}".format(datetime.now())
+
 print("Указать точное название населенного пункта, проверить, совпадает ли на OSM")
 
 print("Пример ввода названия:Ярославль")
 name_place=input()
-print("Пример ввода типа:city")
-type_place=input()
+# print("Пример ввода типа:city")
+# type_place=input()
 resp = {}
 resp["elements"] = []
 api = overpass.API()
@@ -88,26 +90,73 @@ while len(resp["elements"]) == 0:
         resp = api.get(
         """[out:json];
         area["ISO3166-1"="RU"][admin_level=6];
-        relation["name"="{}"]["place"="{}"];
-        out bb;""".format(name_place,type_place), 
+        relation["name"="{}"];
+        out bb;""".format(name_place), 
         build=False, responseformat="json")
     except:
         resp["elements"] = []
     if len(resp["elements"]) != 0:
-        dict_bbox = resp["elements"][0]["bounds"]
+        #############################
+        if len(resp['elements']) > 1:
+            lst_region = []
+            lst_ind = []
+            for i in range(len(resp['elements'])):
+                region = str(i) + "_" + str(resp['elements'][i]['id'])
+                try:
+                    region = region + "_" + resp['elements'][i]['tags']['addr:region']
+                except:
+                    pass
+                lst_region.append(region)
+                lst_ind.append(i)
+        # 
+            print("Found several objects with such name in regions:")
+            print("index_relationID_region(if in tags)")
+            print()
+            print(lst_region)
+            while True:
+                try:
+                    print()
+                    print("to check which one do you need, go to:")
+                    print("https://overpass-turbo.eu/#")
+                    print("Clear everything and insert this code (instead of 123456 use relationID)")
+                    print()
+                    print("relation(123456);")
+                    print("(._;>;);")
+                    print("out;")
+                    print()
+                    print("Then click 'Старт/Start', then - zoom (лупа)")
+                    print()
+                    print("Insert selected index (first number before '_')")
+                    ind = int(input())
+                    if ind in lst_ind:
+                        break
+                except:
+                    print("That's not a valid option!")
+            #
+            
+        # 
+        else:
+            ind = 0
+        # 
+        #############################
+        dict_bbox = resp["elements"][ind]["bounds"]
+        
         print("Place is found")
         break
     else:
         print("Введено некорректное значение")
-        print("Введено:",name_place, type_place)
+        print("Введено:",name_place)
         print("Введите заново:")
         print("Пример ввода названия:Ярославль")
         name_place=input()
-        print("Пример ввода типа:city")
-        type_place=input()
+        # print("Пример ввода типа:city")
+        # type_place=input()
         resp = {}
         resp["elements"] = []
 #
+poly_osmid = str(resp['elements'][ind]['id'])
+#########################
+
 
 place = name_place
 buffer = 0
@@ -165,7 +214,16 @@ print(url_new)
 
 print("Файл скачивается, подождите...")
 # с помощью wget можно скачивать большие объемы, например, области
-filename = wget.download(url_new, out='./data/raw/osm/map_{}_{}_{}.osm'.format(buff_km, place, str_date))
+try:
+    filename = wget.download(url_new, out='{}\\map_{}_{}_{}.osm'.format(path_raw_osm,buff_km, place, str_date))
+except:
+    print("HTTP Error 429: Too Many Requests")
+    print("Try again later, and go:")
+    print()
+    print("http://overpass-api.de/api/status")
+    print()
+    print("http://overpass-api.de/api/kill_my_queries")
+    exit()
 print()
 print("Скачанный файл:")
 print(filename)
