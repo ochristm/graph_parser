@@ -12,7 +12,7 @@ import pandas as pd
 import geopandas as gpd
 import shapely
 import shapely.wkt
-from shapely.geometry import Point, LineString
+from shapely.geometry import Point, LineString, MultiLineString, Polygon
 from tqdm.notebook import tqdm
 
 import wget
@@ -24,6 +24,7 @@ import re
 import girs
 from girs.feat.layers import LayersReader
 import os.path
+import overpass
 
 #############################
 
@@ -105,11 +106,63 @@ del lrs
 #extract polygon of the city from all polygons
 gdf_poly = gdf_multipolygons[gdf_multipolygons.osm_id==poly_osmid][['osm_id', 'name', 
                                                               'place', 'other_tags', 'geometry']].reset_index(drop=True)
-gdf_poly.geometry[0] = gdf_poly.geometry[0][0]
+#
+if len(gdf_poly) > 0:
+    gdf_poly.crs='epsg:4326'
+    try:
+    #gdf_poly = gdf_poly.iloc[[0]]
+        gdf_poly.geometry[0] = gdf_poly.geometry[0][0]
+    except:
+        pass
+#
+
+else:
+    try:
+        api = overpass.API()
+        poly_resp = api.get(
+            """[out:json][timeout:25];
+            relation({});
+            (._;>;);
+            out geom;""".format(poly_osmid), 
+            build=False, responseformat="json")
+        # Collect coords into list
+        coords = []
+        for element in poly_resp['elements']:
+            if element['type'] == 'way':
+                one_line = []
+                for j in range(len(element['geometry'])):
+                    lon = element['geometry'][j]['lon']
+                    lat = element['geometry'][j]['lat']
+                    one_line.append((lon, lat))
+                coords.append(LineString(one_line))
+        #
+        ml = MultiLineString(coords)
+        buff_ml = ml.buffer(0.000000003)
+        pl = ml.convex_hull
+        diff = pl.difference(buff_ml)
+        lst_len = []
+        i=0
+        max_ind = -1
+        for i in range(len(diff)):
+            len_poly = diff[i].length
+            lst_len.append(len_poly)
+            if len_poly == max(lst_len):
+                max_ind = i
+        # 
+        boundary = diff[max_ind]
+        gdf_poly=gpd.GeoDataFrame(geometry=[boundary])
+        gdf_poly['osm_id'] = poly_osmid
+        gdf_poly.crs='epsg:4326'
+    except:
+        pass
+#
 if int(buff_km) > 0:
     buffer = int(buff_km) * 1000
-    gdf_poly.geometry = gdf_poly.geometry.to_crs('epsg:32637').buffer(buffer).to_crs('epsg:4326')
-
+    try:
+        gdf_poly.geometry = gdf_poly.geometry.to_crs('epsg:32637').buffer(buffer).to_crs('epsg:4326')
+    except:
+        pass
+#
 
 gdf_lines = gdf_lines[['osm_id', 'name', 'highway', 'waterway', 'aerialway', 
                            'barrier', 'man_made', 'other_tags', 'geometry']]
@@ -312,7 +365,11 @@ gdf_lines_shp.to_file("{}\\gdf_lines_{}_{}_{}.shp".format(path_raw_shp_layers,bu
 gdf_points.to_file("{}\\gdf_points_{}_{}_{}.shp".format(path_raw_shp_layers,buff_km, place, str_date), encoding="utf-8")
 gdf_multilines.to_file("{}\\gdf_multilines_{}_{}_{}.shp".format(path_raw_shp_layers,buff_km, place, str_date), encoding="utf-8")
 gdf_multipolygons.to_file("{}\\gdf_multipolygons_{}_{}_{}.shp".format(path_raw_shp_layers,buff_km, place, str_date), encoding="utf-8")
-gdf_poly.to_file('{}\\poly_{}_{}_{}.shp'.format(path_raw_shp_poly,buff_km, place, str_date), encoding='utf-8')
+try:
+    gdf_poly.to_file('{}\\poly_{}_{}_{}.shp'.format(path_raw_shp_poly,buff_km, place, str_date), encoding='utf-8')
+except:
+    pass
+    print("Borders of the region are not saved to shp")
 print("All raw shps are saved")
 #
 print("Done")

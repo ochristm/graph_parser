@@ -48,8 +48,8 @@ while (os.path.isfile(filename) != True):
     filename = input()
     if os.path.isfile(filename) == False:
         print("Файл не найден, попробуйте снова")
-    else:
-        print("Файл найден")
+    # else:
+        # print("Файл найден")
 # 
 
 
@@ -75,7 +75,7 @@ path_res_nodes = path_res + '\\nodes'
 
 try:
     os.mkdir(path_tuon)
-    print ("Создана директория %s \n" % path_tuon)
+    # print ("Создана директория %s \n" % path_tuon)
 except OSError:
     print ("Не удалось создать директорию: %s \n" % path_tuon)
     print("Возможно, она уже создана")

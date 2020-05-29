@@ -124,7 +124,7 @@ rail_subw = city_graph[(city_graph['other_tags'].str.contains('subway', na=False
 lst_highway_notok = ['steps', 'pedestrian', 'footway', 'path', 'raceway', 'road', 'track', 'planned', 'proposed']
 
 lst_ot_notok = ['access"=>"no','admin_level','aeroway','attraction','building',
-                'ferry','grass','land','leaf_type',
+                'ferry','grass','hiking','land','leaf_type',
                 'leisure','mud','natural','piste',
                 'planned','power','private','proposed','wood']
 # some are ok: unpaved,description
@@ -202,7 +202,9 @@ try:
         (add_new.waterway.isna())
         & (add_new.aerialway.isna())
         & (add_new.barrier.isna())
-        & (add_new.man_made.isna())].drop_duplicates()
+        & (add_new.man_made.isna()) 
+        & ~add_new.highway.isin(lst_highway_notok) 
+        & ~add_new.highway.isin(lst_ot_notok)].drop_duplicates()
 
     city_graph = city_graph.append(add_new).reset_index(drop=True)
 except:
@@ -867,7 +869,7 @@ for i in range(len(graph_full)):
     elif graph_full.NUMLANES[i] == 0:
         lst_typeno.append(0)
     else:
-        if graph_full.highway[i] == 'trunk':
+        if graph_full.highway[i] in ['motorway','trunk']:
             lst_typeno.append(1)
         elif graph_full.highway[i] == 'primary':
             lst_typeno.append(2)
@@ -875,7 +877,7 @@ for i in range(len(graph_full)):
             lst_typeno.append(3)
         elif graph_full.highway[i] == 'tertiary':
             lst_typeno.append(4)
-        elif graph_full.highway[i] in ['trunk_link', 'primary_link', 'secondary_link', 'tertiary_link']:
+        elif graph_full.highway[i] in ['motorway_link','trunk_link', 'primary_link', 'secondary_link', 'tertiary_link']:
             lst_typeno.append(5)
         elif graph_full.name[i] != None:
             lst_typeno.append(6)

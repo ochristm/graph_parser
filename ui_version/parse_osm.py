@@ -88,7 +88,7 @@ api = overpass.API()
 while len(resp["elements"]) == 0:
     try:
         resp = api.get(
-        """[out:json];
+        """[out:json][timeout:25];
         area["ISO3166-1"="RU"][admin_level=6];
         relation["name"="{}"];
         out bb;""".format(name_place), 
@@ -235,9 +235,9 @@ import pandas as pd
 bbox=new_minlat,new_minlon,new_maxlat,new_maxlon
 
 resrt = api.get(
-"""[out:json];
+"""[out:json][timeout:25];
 relation{bbox}["type"="restriction"];
-out body;""".format(bbox=bbox), 
+out;""".format(bbox=bbox), 
 build=False, responseformat="json")
 
 ######################
