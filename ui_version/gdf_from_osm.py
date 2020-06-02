@@ -26,6 +26,21 @@ from girs.feat.layers import LayersReader
 import os.path
 import overpass
 
+# # В случе ошибки RuntimeError: b'no arguments in initialization list'
+# # Если действие выше не помогло, то нужно задать системной переменной PROJ_LIB
+# # явный путь к окружению по аналогии ниже
+# Для настройки проекции координат, поменять на свой вариант
+import conda
+conda_file_dir = conda.__file__
+conda_dir = conda_file_dir.split('lib')[0]
+proj_lib = os.path.join(conda_dir, 'Library\share')
+# proj_lib = os.path.join(os.path.join(conda_dir, 'pkgs'), 'proj4-5.2.0-h6538335_1006\Library\share')
+path_gdal = os.path.join(proj_lib, 'gdal')
+os.environ ['PROJ_LIB']=proj_lib
+os.environ ['GDAL_DATA']=path_gdal
+
+# os.environ ['PROJ_LIB']=r'C:\Users\popova_kv\AppData\Local\Continuum\anaconda3\Library\share'
+# os.environ ['GDAL_DATA']=r'C:\Users\popova_kv\AppData\Local\Continuum\anaconda3\Library\share\gdal'
 #############################
 
 # filename = './data/map_2_Yaroslavl,Russia_20200430_2004.osm'
@@ -54,12 +69,12 @@ buff_km = list_split[-4]
 #gdf_poly = parse_osm.gdf_poly
 #buff_km = parse_osm.buff_km
 #############################
-path_data = '.\\data\\' + str_date
+path_data = '.\\data\\' + str(poly_osmid) + '\\' + str_date
 path_raw = path_data + '\\raw'
-path_raw_csv = path_raw + '\\csv'
-path_raw_shp = path_raw + '\\shp'
-path_raw_shp_layers = path_raw_shp + '\\layers'
-path_raw_shp_poly = path_raw_shp + '\\poly'
+path_raw_csv = path_raw
+#path_raw_shp = path_raw + '\\shp'
+path_raw_shp_layers = path_raw + '\\layers'
+path_raw_shp_poly = path_raw_shp_layers
 
 #############################
 #gdf_poly = ox.gdf_from_place(place, which_result=2, buffer_dist=int(buff_km)*1000)
@@ -109,11 +124,11 @@ gdf_poly = gdf_multipolygons[gdf_multipolygons.osm_id==poly_osmid][['osm_id', 'n
 #
 if len(gdf_poly) > 0:
     gdf_poly.crs='epsg:4326'
-    try:
-    #gdf_poly = gdf_poly.iloc[[0]]
-        gdf_poly.geometry[0] = gdf_poly.geometry[0][0]
-    except:
-        pass
+    # try:
+    # #gdf_poly = gdf_poly.iloc[[0]]
+        # gdf_poly.geometry[0] = gdf_poly.geometry[0][0]
+    # except:
+        # pass
 #
 
 else:
@@ -370,6 +385,6 @@ try:
 except:
     pass
     print("Borders of the region are not saved to shp")
-print("All raw shps are saved")
+print("All raw data is saved to folder 'raw'")
 #
 print("Done")

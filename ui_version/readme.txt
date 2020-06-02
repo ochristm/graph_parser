@@ -24,8 +24,15 @@ ogr
 os
 osgeo
 osmnx
+overpass
 pandas
+pyproj
 re
 shapely
 tqdm
 wget
+
+
+(proj4 и rasterio устанавливать через):
+conda install -c conda-forge proj4
+conda install -c conda-forge rasterio

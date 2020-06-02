@@ -9,17 +9,21 @@ import os
 from tqdm.notebook import tqdm
 
 # # В случе ошибки RuntimeError: b'no arguments in initialization list'
-# # необходимо снять комментарии у этого текста
-# conda_file_dir = conda.__file__
-# conda_dir = conda_file_dir.split('lib')[0]
-# proj_lib = os.path.join(os.path.join(conda_dir, 'pkgs'), 'proj4-5.2.0-h6538335_1006\Library\share')
-# os.environ["PROJ_LIB"] = proj_lib
-
 # # Если действие выше не помогло, то нужно задать системной переменной PROJ_LIB
 # # явный путь к окружению по аналогии ниже
 # Для настройки проекции координат, поменять на свой вариант
-os.environ ['PROJ_LIB']=r'C:\Users\popova_kv\AppData\Local\Continuum\anaconda3\Library\share'
+import conda
+conda_file_dir = conda.__file__
+conda_dir = conda_file_dir.split('lib')[0]
+proj_lib = os.path.join(conda_dir, 'Library\share')
+# proj_lib = os.path.join(os.path.join(conda_dir, 'pkgs'), 'proj4-5.2.0-h6538335_1006\Library\share')
+path_gdal = os.path.join(proj_lib, 'gdal')
+os.environ ['PROJ_LIB']=proj_lib
+os.environ ['GDAL_DATA']=path_gdal
 
+# os.environ ['PROJ_LIB']=r'C:\Users\popova_kv\AppData\Local\Continuum\anaconda3\Library\share'
+# os.environ ['GDAL_DATA']=r'C:\Users\popova_kv\AppData\Local\Continuum\anaconda3\Library\share\gdal'
+    
 #отключить предупреждения pandas (так быстрее считает!!!):
 pd.options.mode.chained_assignment = None
 
@@ -44,8 +48,9 @@ filename = ''
 
 while (os.path.isfile(filename) != True):
     print("Введите путь и название файла OSM, пример:")
-    print("./data/map_2_Yaroslavl,Russia_20200430_2004.osm")
+    print(".\\data\\20200430_2004\\raw\\osm\\map_2_Yaroslavl,Russia_20200430_2004.osm")
     filename = input()
+    filename = '.\data' + filename.split(".\data")[1]
     if os.path.isfile(filename) == False:
         print("Файл не найден, попробуйте снова")
     # else:
@@ -57,29 +62,31 @@ list_split = filename[:-4].rsplit("_")
 str_date = list_split[-2] + "_" + list_split[-1]
 place = list_split[-3]
 buff_km = list_split[-4]
+poly_osmid = filename.split("data\\")[1].split("\\")[0]
 
 ###########################
 #path_new = os.getcwd()
-path_data = '.\\data\\' + str_date
-path_tuon = path_data + '\\turn_onew'
+path_data = '.\\data\\' + str(poly_osmid) + '\\' + str_date
+
 #path_tuon = path_data = '\\turn_onew'
 
 path_raw = path_data + '\\raw'
-path_raw_csv = path_raw + '\\csv'
-path_raw_shp = path_raw + '\\shp'
-path_raw_shp_layers = path_raw_shp + '\\layers'
+path_raw_csv = path_raw
+#path_raw_shp = path_raw
+path_raw_shp_layers = path_raw + '\\layers'
 
 path_res = path_data + '\\res'
-path_res_edges = path_res + '\\edges'
-path_res_nodes = path_res + '\\nodes'
+path_res_edges = path_res
+path_res_nodes = path_res
+path_tuon = path_res #path_data + '\\turn_onew'
 
-try:
-    os.mkdir(path_tuon)
-    # print ("Создана директория %s \n" % path_tuon)
-except OSError:
-    print ("Не удалось создать директорию: %s \n" % path_tuon)
-    print("Возможно, она уже создана")
-#
+# try:
+    # os.mkdir(path_tuon)
+    # # print ("Создана директория %s \n" % path_tuon)
+# except OSError:
+    # print ("Не удалось создать директорию: %s \n" % path_tuon)
+    # print("Возможно, она уже создана")
+# #
 print("Please wait...")
 
 ###########################
@@ -91,9 +98,25 @@ gdf_other_lines = gpd.read_file(r'{}\\other_lines_{}_{}_{}.shp'.format(path_raw_
 
 gdf_other_points = gpd.read_file(r'{}\\other_points_{}_{}_{}.shp'.format(path_raw_shp_layers,buff_km, place, str_date), encoding = 'utf-8')
 
-csv_ot = pd.read_csv(r'{}\\csv_{}_{}_{}.csv'.format(path_raw_csv,buff_km, place, str_date), encoding = 'utf-8', sep=';')
+#Specify dtype to eliminate this error
+#DtypeWarning: Columns (4) have mixed types.Specify dtype option on import or set low_memory=False.
+dtype={'osm_id':np.int64, 'name':str, 'highway':str, 'waterway':str, 
+       'aerialway':str, 'barrier':str,'man_made':str, 'z_order':np.int64, 'other_tags':str}
+csv_ot = pd.read_csv(r'{}\\csv_{}_{}_{}.csv'.format(path_raw_csv,buff_km, place, str_date), dtype=dtype, encoding = 'utf-8', sep=';')
 
 all_nodes = all_nodes[['NO', 'geometry']]
+
+#####################
+# lst_tss = []
+# i=0
+# for i in range(len(new_graph)):
+    # if new_graph.TSYSSET[i] == 'T':
+        # lst_tss.append('TM')
+    # else:
+        # lst_tss.append(new_graph.TSYSSET[i])
+# # 
+# new_graph['TSYSSET']=lst_tss
+#####################
 
 # подтянуть обрезавшиеся теги (shp обрезает до 255 символов)
 dict_ot = {}
@@ -143,6 +166,8 @@ restr_points = restr_points.merge(olines_last[['osm_id',
                                                    'geometry']], how='left', on=['osm_id'])
 restr_points = restr_points.rename(columns={'geometry':'two_geometry'})
 
+lst_nan_restr = list(restr_points[restr_points.two_geometry.isna() | restr_points.one_geometry.isna()].osm_id.unique())
+restr_points = restr_points[~restr_points.osm_id.isin(lst_nan_restr)].reset_index(drop=True)
 
 def create_points(find_point):
     list_p_from = []
@@ -276,7 +301,7 @@ for i in (range(len(df_neighs))):
 
 # формирование таблицы from_to и удаление односторонних пар в неправильном навправлении
 df_from_to = new_graph[new_graph.NUMLANES != 0][['FROMNODENO', 'TONODENO', 'TSYSSET']]
-df_from_to = df_from_to.drop_duplicates().reset_index(drop=True)
+df_from_to = df_from_to.drop_duplicates(df_from_to.columns).reset_index(drop=True)
 df_from_to = df_from_to.rename(columns={'FROMNODENO':'node_from', 'TONODENO':'node_to'})
 df_from_to['from_to'] = df_from_to['node_from'].astype(str) + "_" + df_from_to['node_to'].astype(str)
 
@@ -284,7 +309,7 @@ df_from_to['from_to'] = df_from_to['node_from'].astype(str) + "_" + df_from_to['
 # for u_turn only (delete only from_via_to, from_to - is ok)
 # to delete u_turns for railway - its impossible
 
-rail_all = new_graph[new_graph.TSYSSET.isin(['E', 'T'])].reset_index(drop=True)
+rail_all = new_graph[new_graph.TSYSSET.isin(['E', 'TM', 'MTR'])].reset_index(drop=True)
 rail_false = rail_all[['FROMNODENO', 'TONODENO']].copy()
 rail_false['from_via_to'] = rail_false['FROMNODENO'].astype(str) \
 + "_" + rail_false['TONODENO'].astype(str) +  "_" + rail_false['FROMNODENO'].astype(str)
@@ -305,10 +330,29 @@ df_from_via_to = df_from_via_to.rename(columns={'node_from':'node_via',
                                                 'node_from_1':'node_from', 
                                                 'TSYSSET':'TSYSSET_2'})
 #
-df_from_via_to = df_from_via_to[df_from_via_to.TSYSSET_1 == df_from_via_to.TSYSSET_2]
+#########################
+
+df_from_via_to = df_from_via_to.reset_index(drop=True)
+
+lst_ok_type = []
+i=0
+for i in range(len(df_from_via_to)):
+    if str(df_from_via_to.TSYSSET_1[i]) in str(df_from_via_to.TSYSSET_2[i]):
+        lst_ok_type.append(df_from_via_to.TSYSSET_1[i])
+    elif str(df_from_via_to.TSYSSET_2[i]) in str(df_from_via_to.TSYSSET_1[i]):
+        lst_ok_type.append(df_from_via_to.TSYSSET_2[i])
+    else:
+        lst_ok_type.append("Wrong")
+# 
+
+
+df_from_via_to['TSYSSET'] = lst_ok_type
+
+df_from_via_to = df_from_via_to[(df_from_via_to.TSYSSET != 'Wrong')].reset_index(drop=True)
+
 # nans - only in node_to, they are ends, its ok to delete
-df_from_via_to = df_from_via_to.dropna()
 df_from_via_to['node_to'] = df_from_via_to['node_to'].astype(np.int64)
+
 
 df_from_via_to['from_via_to'] = df_from_via_to['node_from'].astype(str) \
 + "_" + df_from_via_to['node_via'].astype(str) +  "_" + df_from_via_to['node_to'].astype(str)
@@ -322,38 +366,8 @@ df_from_via_to = df_from_via_to[~((df_from_via_to.node_via.isin(no_u_turn.nodeID
 #
 df_from_via_to = df_from_via_to.reset_index(drop=True)
 
-#############  ####################
-lst_etrain_nodes = []
-lst_tram_nodes = []
-lst_psv_nodes = []
-lst_all_veh_nodes = []
 
-i=0
-for i in (range(len(new_graph))):
-    if new_graph.TSYSSET[i] == 'E':
-        lst_etrain_nodes.append(new_graph.FROMNODENO[i])
-        lst_etrain_nodes.append(new_graph.TONODENO[i])
-    elif new_graph.TSYSSET[i] == 'T':
-        lst_tram_nodes.append(new_graph.FROMNODENO[i])
-        lst_tram_nodes.append(new_graph.TONODENO[i])
-    elif new_graph.TSYSSET[i] == 'BUS,TB,MT':
-        lst_psv_nodes.append(new_graph.FROMNODENO[i])
-        lst_psv_nodes.append(new_graph.TONODENO[i])
-    elif new_graph.TSYSSET[i] == 'CAR,BUS,TB,MT':
-        lst_all_veh_nodes.append(new_graph.FROMNODENO[i])
-        lst_all_veh_nodes.append(new_graph.TONODENO[i])
-    else:
-        pass
-# 
-lst_etrain_nodes = list(set(lst_etrain_nodes))
-lst_tram_nodes = list(set(lst_tram_nodes))
-lst_psv_nodes = list(set(lst_psv_nodes))
-lst_all_veh_nodes = list(set(lst_all_veh_nodes))
-#
-
-
-##################
-
+###################################
 # only - delete other (node_from - node_via), except itself
 # no - delete (node_from - node_via - node_to)
 # no_entry - delete (node_from - node_via - node_to)
@@ -396,27 +410,28 @@ dlt_only = sum(list_dlt_only, [])
 # exceptions
 # исключения. это значит, что запрет действует для всех видов транспорта, кроме указанного в except
 # значит, что указанный в except вид транспорта может совершать этот маневр
-# except_restr = nr_copy[nr_copy.other_tags.str.contains("except",
-#                                                        na=False)].reset_index(drop=True)
-# except_psv = except_restr[except_restr.other_tags.str.contains("psv", na=False)]
-# except_psv = except_psv[['node_from', 'node_via', 'node_to', 'from_via_to']].reset_index(drop=True)
-# except_psv['TSYSSET'] = 'BUS,TB,MT'
+
+#####################################
 ###################################
 
 etrain_fvt = df_from_via_to[((df_from_via_to.TSYSSET_1 == 'E')
                 & (df_from_via_to.TSYSSET_2 == 'E'))].reset_index(drop=True)
 etrain_fvt['TSYSSET'] = 'E'
 #
-tram_fvt = df_from_via_to[((df_from_via_to.TSYSSET_1 == 'T')
-                & (df_from_via_to.TSYSSET_2 == 'T'))].reset_index(drop=True)
-tram_fvt['TSYSSET'] = 'T'
+tram_fvt = df_from_via_to[((df_from_via_to.TSYSSET_1.str.contains('TM'))
+                & (df_from_via_to.TSYSSET_2.str.contains('TM')))].reset_index(drop=True)
+tram_fvt['TSYSSET'] = 'TM'
+#
+metro_fvt = df_from_via_to[((df_from_via_to.TSYSSET_1.str.contains('MTR'))
+                & (df_from_via_to.TSYSSET_2.str.contains('MTR')))].reset_index(drop=True)
+metro_fvt['TSYSSET'] = 'MTR'
 #
 psv_fvt = df_from_via_to[((df_from_via_to.TSYSSET_1 == 'BUS,TB,MT')
                 & (df_from_via_to.TSYSSET_2 == 'BUS,TB,MT'))].reset_index(drop=True)
 psv_fvt['TSYSSET'] = 'BUS,TB,MT'
 #
-veh_all_fvt = df_from_via_to[((df_from_via_to.TSYSSET_1 == 'CAR,BUS,TB,MT')
-                & (df_from_via_to.TSYSSET_2 == 'CAR,BUS,TB,MT'))].reset_index(drop=True)
+veh_all_fvt = df_from_via_to[((df_from_via_to.TSYSSET_1.str.contains('CAR'))
+                & (df_from_via_to.TSYSSET_2.str.contains('CAR')))].reset_index(drop=True)
 # delete psv_only paths from all_vehicle (one or two nodes are ok, but three - no)
 veh_all_fvt = veh_all_fvt[~veh_all_fvt.from_via_to.isin(psv_fvt.from_via_to)]
 veh_all_fvt['TSYSSET'] = 'CAR,BUS,TB,MT'
@@ -431,7 +446,7 @@ veh_all_fvt['TSYSSET'] = 'CAR,BUS,TB,MT'
 # add - after deletion in all_veh, because some except_restrictions must be in all_veh
 # psv_fvt = psv_fvt.append(except_psv).drop_duplicates().reset_index(drop=True)
 
-all_fvt = veh_all_fvt.append(psv_fvt).append(tram_fvt).append(etrain_fvt).reset_index(drop=True)
+all_fvt = veh_all_fvt.append(psv_fvt).append(tram_fvt).append(metro_fvt).append(etrain_fvt).reset_index(drop=True)
 
 all_fvt = all_fvt.rename(columns={'node_from':'FROMNODENO', 'node_via':'VIANODENO', 'node_to':'TONODENO'})
 del all_fvt['from_via_to'], all_fvt['TSYSSET_1'], all_fvt['TSYSSET_2']
@@ -440,6 +455,9 @@ nodes = all_nodes.copy()
 my_turns = all_fvt.copy()
 
 ############################
+
+
+
 #Find type of the turn
 ############################
 
@@ -456,7 +474,6 @@ geo_turns['real_TONODENO'] = geo_turns['TONODENO']
 geo_turns['TONODENO'] = geo_turns['VIANODENO']
 geo_turns = geo_turns.merge(fr_mrg, how='left', 
                             on=['FROMNODENO', 'TONODENO'])
-# on=['FROMNODENO', 'TONODENO', 'TSYSSET']
 geo_turns = geo_turns.rename(columns={'geometry':'line_geo_from'})
 
 
@@ -584,13 +601,7 @@ my_turns_w_graph['FROMNODENO'] = my_turns_w_graph['real_FROMNODENO']
 del my_turns_w_graph['real_FROMNODENO']
 del my_turns_w_graph['real_TONODENO']
 
-
-
 node_geo_angle_graph = my_turns_w_graph.copy()
-
-# node_geo_angle_graph = node_geo_angle_graph.merge(geo_turns, how='left', 
-#                                                   on=['FROMNODENO', 'VIANODENO', 'TONODENO', 'TSYSSET'])
-#
 
 node_geo_angle_graph['from_via_type'] = node_geo_angle_graph.FROMNODENO.astype(str) + "_" +\
 + node_geo_angle_graph.VIANODENO.astype(str) + "_" +\
@@ -685,15 +696,6 @@ zero_car_2 = df_from_via_to[((df_from_via_to.from_via_to.isin(dlt_only))
 zero_car_2 = zero_car_2.merge(nodes_restr[['osm_id', 'other_tags', 'node_from', 'node_via']], 
                               how='left', on=['node_from', 'node_via'])
 zero_car_2 = zero_car_2[~zero_car_2.osm_id.isna()]
-lst_zc = []
-i=0
-for i in range(len(zero_car_2)):
-    if "psv" in zero_car_2.other_tags[i]:
-        lst_zc.append('CAR')
-    else:
-        lst_zc.append('CAR,BUS,TB,MT')
-# 
-zero_car_2['TSYSSET'] = lst_zc
 
 zero_car_2 = zero_car_2[zero_car_2.other_tags.str.contains("only_", na=False)]
 
@@ -709,15 +711,7 @@ zero_car_2 = zero_car_2[['FROMNODENO', 'VIANODENO', 'TONODENO', 'TSYSSET', 'TYPE
 all_zero_car = zero_car.append(zero_car_2).reset_index(drop=True)
 all_zero_car = all_zero_car.drop_duplicates(all_zero_car.columns)
 
-# tmp_check = copy_ngag.copy()
-# tmp_check['from_via_to'] = tmp_check['FROMNODENO'].astype(str) \
-# + "_" + tmp_check['VIANODENO'].astype(str) +  "_" + tmp_check['TONODENO'].astype(str)
-
-# copy_tmp_restr = all_zero_car.copy()
-# copy_tmp_restr['from_via_to'] = copy_tmp_restr['FROMNODENO'].astype(str) \
-# + "_" + copy_tmp_restr['VIANODENO'].astype(str) +  "_" + copy_tmp_restr['TONODENO'].astype(str)
-
-# # tmp_check[(tmp_check.from_via_to.isin(copy_tmp_restr.from_via_to))] # should be only psv
+#
 
 except_restr = nr_copy[nr_copy.other_tags.str.contains("except",
                                                        na=False)].reset_index(drop=True)
@@ -792,5 +786,6 @@ final_fvt = final_fvt.drop_duplicates(final_fvt.columns).reset_index(drop=True)
 ####################################
 
 final_fvt.to_csv("{}\\final_fvt_{}_{}_{}.csv".format(path_tuon, buff_km, place, str_date), sep=";", encoding="utf-8", index=False)
-
+print("Results are in folder 'res'")
 print("Done")
+

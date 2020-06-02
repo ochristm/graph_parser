@@ -31,6 +31,22 @@ from girs.feat.layers import LayersReader
 import overpass
 from pyproj import Proj, transform
 
+# # В случе ошибки RuntimeError: b'no arguments in initialization list'
+# # Если действие выше не помогло, то нужно задать системной переменной PROJ_LIB
+# # явный путь к окружению по аналогии ниже
+# Для настройки проекции координат, поменять на свой вариант
+import conda
+conda_file_dir = conda.__file__
+conda_dir = conda_file_dir.split('lib')[0]
+proj_lib = os.path.join(conda_dir, 'Library\share')
+# proj_lib = os.path.join(os.path.join(conda_dir, 'pkgs'), 'proj4-5.2.0-h6538335_1006\Library\share')
+path_gdal = os.path.join(proj_lib, 'gdal')
+os.environ ['PROJ_LIB']=proj_lib
+os.environ ['GDAL_DATA']=path_gdal
+
+# os.environ ['PROJ_LIB']=r'C:\Users\popova_kv\AppData\Local\Continuum\anaconda3\Library\share'
+# os.environ ['GDAL_DATA']=r'C:\Users\popova_kv\AppData\Local\Continuum\anaconda3\Library\share\gdal'
+
 #отключить предупреждения pandas (так быстрее считает!!!):
 pd.options.mode.chained_assignment = None
 
@@ -38,36 +54,6 @@ import warnings
 warnings.filterwarnings("ignore")
 
 ###############################################
-
-str_date = "{:%Y%m%d_%H%M}".format(datetime.now())
-
-path_new = os.getcwd()
-path_total = path_new + '\\data'
-path_data = path_total + '\\' + str_date
-path_raw = path_data + '\\raw'
-path_raw_osm = path_raw + '\\osm'
-path_raw_csv = path_raw + '\\csv'
-path_raw_shp = path_raw + '\\shp'
-path_raw_shp_layers = path_raw_shp + '\\layers'
-path_raw_shp_poly = path_raw_shp + '\\poly'
-
-path_res = path_data + '\\res'
-path_res_edges = path_res + '\\edges'
-path_res_nodes = path_res + '\\nodes'
-
-list_paths = [path_data, path_raw, path_raw_osm, 
-    path_raw_shp, path_raw_csv, path_raw_shp_layers, path_raw_shp_poly, 
-    path_res, path_res_edges, path_res_nodes]
-
-for path in list_paths:
-    try:
-        os.mkdir(path)
-    except OSError:
-        print ("Не удалось создать директорию: %s \n" % path)
-        print("Возможно, она уже создана")
-    # else:
-        # print ("Создана директория %s \n" % path)
-# 
 
 ###############################################
 # place = 'Yaroslavl,Russia'
@@ -89,10 +75,9 @@ while len(resp["elements"]) == 0:
     try:
         resp = api.get(
         """[out:json][timeout:25];
-        area["ISO3166-1"="RU"][admin_level=6];
         relation["name"="{}"];
         out bb;""".format(name_place), 
-        build=False, responseformat="json")
+        build=False, responseformat="json") #area["ISO3166-1"="RU"][admin_level=6];
     except:
         resp["elements"] = []
     if len(resp["elements"]) != 0:
@@ -157,6 +142,40 @@ while len(resp["elements"]) == 0:
 poly_osmid = str(resp['elements'][ind]['id'])
 #########################
 
+#########################
+
+str_date = "{:%Y%m%d_%H%M}".format(datetime.now())
+
+path_new = os.getcwd()
+path_total = path_new + '\\data'
+path_city = path_total + '\\' + str(poly_osmid)
+path_data = path_city + '\\' + str_date
+path_raw = path_data + '\\raw'
+path_raw_osm = path_raw
+path_raw_csv = path_raw
+#path_raw_shp = path_raw + '\\shp'
+path_raw_shp_layers = path_raw + '\\layers'
+path_raw_shp_poly = path_raw_shp_layers
+
+path_res = path_data + '\\res'
+path_res_edges = path_res
+path_res_nodes = path_res
+
+list_paths = [path_total, path_city, path_data, path_raw, path_raw_shp_layers, path_res]
+
+for path in list_paths:
+    try:
+        os.mkdir(path)
+    except FileExistsError:
+        pass
+    except OSError:
+        print ("Не удалось создать директорию: %s \n" % path)
+    # else:
+        # print ("Создана директория %s \n" % path)
+# 
+
+#########################
+
 
 place = name_place
 buffer = 0
@@ -215,7 +234,7 @@ print(url_new)
 print("Файл скачивается, подождите...")
 # с помощью wget можно скачивать большие объемы, например, области
 try:
-    filename = wget.download(url_new, out='{}\\map_{}_{}_{}.osm'.format(path_raw_osm,buff_km, place, str_date))
+    filename = wget.download(url_new, out='{}\\map_{}_{}_{}.osm'.format(path_raw_osm,buff_km, place, str_date), bar=None)
 except:
     print("HTTP Error 429: Too Many Requests")
     print("Try again later, and go:")
@@ -226,13 +245,18 @@ except:
     exit()
 print()
 print("Скачанный файл:")
-print(filename)
+str_filename = '.\\data'+ filename.split('data')[1]
+print('\t',str_filename)
 
 #################################
 #get restrictions directly from api
 import pandas as pd
+import time
 # bbox=57.4464,39.2596,57.8528,40.4750
 bbox=new_minlat,new_minlon,new_maxlat,new_maxlon
+print("Getting restrictions")
+print("Please, wait...")
+time.sleep(30)
 
 resrt = api.get(
 """[out:json][timeout:25];
