@@ -8,19 +8,8 @@ print("Part 3. Processing a graph (filtering and creating nodes)")
 print("Please wait...")
 print()
 
-import pandas as pd
-import numpy as np
-from datetime import datetime
-import geopandas as gpd
-import shapely as shp
 
 import os
-from tqdm.notebook import tqdm
-
-# # В случе ошибки RuntimeError: b'no arguments in initialization list'
-# # Если действие выше не помогло, то нужно задать системной переменной PROJ_LIB
-# # явный путь к окружению по аналогии ниже
-# Для настройки проекции координат, поменять на свой вариант
 import conda
 conda_file_dir = conda.__file__
 conda_dir = conda_file_dir.split('lib')[0]
@@ -29,6 +18,20 @@ proj_lib = os.path.join(conda_dir, 'Library\share')
 path_gdal = os.path.join(proj_lib, 'gdal')
 os.environ ['PROJ_LIB']=proj_lib
 os.environ ['GDAL_DATA']=path_gdal
+
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import geopandas as gpd
+import shapely
+
+from tqdm.notebook import tqdm
+
+# # В случе ошибки RuntimeError: b'no arguments in initialization list'
+# # Если действие выше не помогло, то нужно задать системной переменной PROJ_LIB
+# # явный путь к окружению по аналогии ниже
+# Для настройки проекции координат, поменять на свой вариант
+
 
 # os.environ ['PROJ_LIB']=r'C:\Users\popova_kv\AppData\Local\Continuum\anaconda3\Library\share'
 # os.environ ['GDAL_DATA']=r'C:\Users\popova_kv\AppData\Local\Continuum\anaconda3\Library\share\gdal'
@@ -123,6 +126,7 @@ city_graph['other_tags'] = list_new_columns[1]
 rail_tram = city_graph[(city_graph['other_tags'].str.contains('"railway"=>"tram"', na=False))]
 rail_main = city_graph[(city_graph['other_tags'].str.contains('"railway"=>"rail"', na=False))]
 rail_main = rail_main[((rail_main['other_tags'].str.contains('"usage"=>"main"', na=False)) 
+                       | (rail_main['other_tags'].str.contains('"usage"=>"branch"', na=False))
                        | ((~rail_main['other_tags'].str.contains('service"=>"', na=False)) 
                           & ((~rail_main['other_tags'].str.contains('usage"=>"', na=False)))))]
 #
@@ -134,10 +138,10 @@ rail_subw = rail_subw[~(rail_subw['other_tags'].str.contains('service', na=False
 #  списки ненужных значений, которые надо будет удалить
 lst_highway_notok = ['steps', 'pedestrian', 'footway', 'path', 'raceway', 'road', 'track', 'planned', 'proposed', 'cycleway']
 
-lst_ot_notok = ['access"=>"no','admin_level','aeroway','attraction','building',
+lst_ot_notok = ['access"=>"no','abandoned','admin_level','aeroway','attraction','building',
                 'ferry','grass','hiking', 'ice_road','land','leaf_type',
                 'leisure','mud','natural','piste',
-                'planned','power','private','proposed','wood']
+                'planned','power','private','proposed','wood','wokrset']
 # some are ok: unpaved,description
 
 
@@ -195,6 +199,8 @@ city_graph = city_graph.append(rail_tram)
 city_graph = city_graph.append(rail_main)
 city_graph = city_graph.append(rail_subw)
 
+#city_graph = city_graph[(~city_graph['other_tags'].str.contains('disused', na=False))]
+
 city_graph = city_graph.reset_index(drop=True)
 
 
@@ -221,7 +227,30 @@ try:
     city_graph = city_graph.append(add_new).reset_index(drop=True)
 except:
     pass
+#
 
+########################
+# изменение направления ребра для oneway=-1
+reverse_oneway = city_graph[city_graph.other_tags.str.contains('oneway"=>"-1', 
+                                                               na=False)].reset_index(drop=True)
+#
+lst_geo_new=[]
+i=0
+for i in range(len(city_graph)):
+    if city_graph.osm_id[i] in list(reverse_oneway.osm_id):
+        list_geo = list(city_graph.geometry[i].coords[:])
+        one_reversed_geo = list_geo[::-1]
+        line_2 = LineString(one_reversed_geo)
+        lst_geo_new.append(line_2)
+    else:
+        lst_geo_new.append(city_graph.geometry[i])
+# 
+try:
+    city_graph['geometry'] = lst_geo_new
+except:
+    print("Error_rev")
+# 
+########################
 # #Обработка графа - дробление ребер по перекресткам и создание узлов (nodes)
 
 # здесь происходит дробление ребер по всем пересечениям (даже на многоуровневых эстакадах)
@@ -240,183 +269,117 @@ res_graph = res_graph.to_crs('epsg:4326')
 # подтягивание полей с информацией по пересечению геометрий
 graph_info = gpd.sjoin(res_graph, city_graph, how='left', 
                            op='within').drop("index_right", axis=1).reset_index(drop=True)
+#
+#################################
+nans_g = graph_info[graph_info.osm_id.isna()]
+nans_g = gpd.sjoin(nans_g[['geometry']], city_graph, how='left', 
+                           op='intersects').drop("index_right", axis=1).reset_index(drop=True)
 
+# эти необходимо пере_разбить
+tmp_city = city_graph[city_graph.osm_id.isin(nans_g.osm_id)].reset_index(drop=True)
 
-# функция обрезки ребер, 
-# чтобы при пересечении лишние не приклеивались (те, что на концах ребер)
-def cut(line, distance):
-    # Cuts a line in two at a distance from its starting point
-    if distance <= 0.0 or distance >= line.length:
-        return [LineString(line)]
-    coords = list(line.coords)
-    for i, p in enumerate(coords):
-        pd = line.project(Point(p))
-        if pd == distance:
-            return [
-                LineString(coords[:i+1]),
-                LineString(coords[i:])]
-        if pd > distance:
-            cp = line.interpolate(distance)
-            return [
-                LineString(coords[:i] + [(cp.x, cp.y)]),
-                LineString([(cp.x, cp.y)] + coords[i:])]
-# 
-# вызов функции два раза - чтобы ребро обрезать с двух сторон
-def cut_piece(line, start, end):
-    """ From a linestring, this cuts a piece of length lgth at distance.
-    Needs cut(line,distance) func from above
-    """
-    precut = cut(line, start)[0]
-    #result = cut(precut, end)[1]
-    try:
-        result = cut(precut, end)[1]
-    except:
-        result = precut
-    return result
-
-def cut_geo(gdf):
-    gdf = gdf.copy()
-    # вызов функции обрезки
-    list_new_geo = []
-
-    list_geo_old = list(gdf.to_crs('epsg:32637').geometry) 
-    # преобразование - чтобы в метрах отсечь
-    i=0
-    for i in range(len(list_geo_old)):
-        line = list_geo_old[i]
-        length_line = line.length
-        start = length_line - 0.05 # это длина в метрах - 0.05 метров
-        end = length_line - start
-        cutted_line = cut_piece(line, start, end)
-        list_new_geo.append(cutted_line)
-    # 
-
-    gdf['new_geo'] = list_new_geo
-    gdf = gdf.rename(columns={'geometry':'old_geo', 'new_geo':'geometry'})
-    del gdf['old_geo']
-
-    gdf.crs = 'epsg:32637'
-    gdf = gdf.to_crs('epsg:4326')
-    return gdf
-
-
-# вызов функции обрезки
-cut_nans_gdf = graph_info[graph_info.osm_id.isna()].copy().reset_index(drop=True)
-copy_nans_gdf = cut_geo(cut_nans_gdf)
-
-#################
-#  здесь реализован поиск многоуровневых эстакад (ребер, и их id)
-if len(copy_nans_gdf) > 0:
-    nans_gdf = copy_nans_gdf.copy()
-
-    nans_gdf_inter_1 = gpd.sjoin(nans_gdf[['geometry']], city_graph, how='left', 
-                               op='intersects').drop("index_right", axis=1).reset_index(drop=True)
-
-    non_nan_inter = nans_gdf_inter_1[~nans_gdf_inter_1.osm_id.isna()]
-
-    nan_inter = nans_gdf_inter_1[nans_gdf_inter_1.osm_id.isna()]
-    nans_gdf_buffer = nan_inter.copy()
-    nans_gdf_buffer = nans_gdf_buffer.to_crs('epsg:32637')
-    nans_gdf_buffer['geometry'] = nans_gdf_buffer.geometry.buffer(0.05)
-    nans_gdf_buffer = nans_gdf_buffer.to_crs('epsg:4326')
-
-    nans_gdf_inter_2 = gpd.sjoin(nans_gdf_buffer[['geometry']], city_graph, how='left', 
-                               op='intersects').drop("index_right", axis=1).reset_index(drop=True)
-
-    nans_gdf_inter = non_nan_inter.append(nans_gdf_inter_2)
-
-    list_nans = list(nans_gdf_inter[~nans_gdf_inter.osm_id.isna()].osm_id.unique())
-
-
-    # разбиение ребер, которые пересекают эстакады
-    # но не все между собой, а только те, 
-    # которые не входят в эстакаду, потому что ее надо оставить целостной
-    list_nans = list(nans_gdf_inter[~nans_gdf_inter.osm_id.isna()].osm_id.unique())
-
-    for_one_nan = gpd.GeoDataFrame()
-
-
-    for osmid in (range(len(list_nans))):
-        osm_id_one = list_nans[osmid]
-    # osm_id_one = '45724863'
-    # one_nan = city_graph[city_graph.osm_id == list_nans[0]].copy()[['geometry']]
-        one_nan = city_graph[city_graph.osm_id == osm_id_one].copy()[['geometry']]
-
-
-        inter_one_nan = gpd.sjoin(one_nan, city_graph, how='left', 
-                               op='intersects').drop("index_right", axis=1).reset_index(drop=True)
-        list_inter_one_nan = list(inter_one_nan[~inter_one_nan.osm_id.isna()].osm_id.unique())
-        # удалить все ребра, с которыми нельзя пересекать
-        list_good_one = list(set(list_inter_one_nan) - set(list_nans)) 
-        list_good_one.append(osm_id_one) #для unary_union нужно само ребро
-        unary_one = list(city_graph[city_graph.osm_id.isin(list_good_one)].geometry)
-
-        try:
-            graph_one = unary_union(unary_one)
-        except (AttributeError):
-            graph_one = unary_one
-        # 
-        graph_one_res = [graph_one]
-        gdf_graph_one = gpd.GeoDataFrame(geometry=graph_one_res)
-        # gdf_graph_one = gdf_graph_one.rename(columns={0:'geometry'})
-        gdf_graph_one.crs='epsg:4326'
-        gdf_graph_one = gdf_graph_one.to_crs('epsg:4326')
-
-
-
-        # разделение мультилиний (разбитое ребро превращается в мультилинию) на отдельные линии
-        def transf(x):
-            mapp = mapping(x)
-            if mapp['type'] == "MultiLineString":
-                y = pd.DataFrame([[x] for x in mapp['coordinates']], columns=['geometry'])
-            else:
-                y = pd.DataFrame([[mapping(x)['coordinates']]],columns=['geometry'])
-            return y
-        # 
-
-        ####################
-        big_df = pd.DataFrame()
-        for ix, row in gdf_graph_one.iterrows():
-            big_df = big_df.append(transf(row['geometry']).assign(keys=ix)).reset_index(drop=True)
+# удалить пустые и те, которые необходимо пере_разбить, остальные - ок
+good_graph_info = graph_info[((~graph_info.osm_id.isna()) 
+                              & (~graph_info.osm_id.isin(tmp_city.osm_id)))].reset_index(drop=True)
+#
+lst_uu_geo = []
+newlst=[]
+i=0
+for i in (range(len(tmp_city))):
+# for i in tqdm(range(5)):
+    one_geo = tmp_city.iloc[[i]]
+    tmp_sj = gpd.sjoin(one_geo[['geometry']], city_graph, how='inner', 
+                       op='intersects').drop("index_right", axis=1).reset_index(drop=True)
+    sj_one = city_graph[city_graph.osm_id.isin(tmp_sj.osm_id)].reset_index(drop=True)
+    lst_one_geo = tmp_city.geometry[i].coords[:]
+    uniqlines = []
+    lst_sj_ends=[]
+    j=0
+    for j in range(len(sj_one)):
+        lst_uu = []
+        tmp_lst = []
+        tmp_lst.append(sj_one.geometry[j])
+        lst_sj_one_geo = sj_one.geometry[j].coords[:]
+        res = list(set(lst_one_geo) & set(lst_sj_one_geo)) #find mutual points
+        if len(res) > 0:
+            for k in res:
+                if ((k != tmp_city.geometry[i].coords[0]) & (k != tmp_city.geometry[i].coords[-1])):
+                    if sj_one.geometry[j] not in lst_uu:
+                        lst_uu.append(sj_one.geometry[j])
+                if ((k == sj_one.geometry[j].coords[0]) | (k == sj_one.geometry[j].coords[-1])):
+                    if sj_one.geometry[j] not in lst_sj_ends:
+                        lst_sj_ends.append(sj_one.geometry[j])
         #
-        list_geo =[]
-        for row in big_df.geometry:
-            lines = LineString(row)
-            list_geo.append(lines)
-        big_df['new_geo'] = list_geo
-        big_df = big_df.rename(columns={'geometry':'geometry_old', 'new_geo':'geometry'})
-
-
-
-        gdf_graph_one_new = gpd.GeoDataFrame(big_df[['geometry']].copy().reset_index(drop=True))
-        gdf_graph_one_new.crs='epsg:4326'
-
-        graph_one_info = gpd.sjoin(gdf_graph_one_new, city_graph, how='left', 
-                               op='within').drop("index_right", axis=1).reset_index(drop=True)
-        # 
-        graph_one_info = graph_one_info[graph_one_info.osm_id == osm_id_one].reset_index(drop=True)
-        # 
-
-
-        for_one_nan = for_one_nan.append(graph_one_info).reset_index(drop=True)
+        for line in lst_uu:
+            if not any(p.equals(line) for p in uniqlines):
+                uniqlines.append(line)
+    if tmp_city.geometry[i] not in uniqlines:
+            uniqlines.append(tmp_city.geometry[i])
+    if len(uniqlines) > 1:
+        uu_geo = unary_union(uniqlines)
+        one_gdf = gpd.GeoDataFrame(geometry=list(uu_geo))
+        one_gdf.crs='epsg:4326'
+        tmp_one_gdf = gpd.sjoin(one_gdf, city_graph, how='left', 
+                                op='within').drop("index_right", axis=1)
+        if len(tmp_one_gdf[tmp_one_gdf.osm_id.isna()]) > 0:
+            line_f = tmp_city.geometry[i]
+            line = tmp_city.geometry[i]
+            d=0
+            cnt=0
+            for d in range(len(lst_sj_ends)):
+                try:
+                    point = Point(list(set(line_f.coords[:]) & set(lst_sj_ends[d].coords[:]))[0])
+                    if (((point.coords[0] != line_f.coords[0]) & (point.coords[0] != line_f.coords[-1])) 
+                        & ((point.coords[0] == lst_sj_ends[d].coords[0]) | (point.coords[0] == lst_sj_ends[d].coords[-1]))):
+                        new_geo = shapely.geometry.MultiLineString(list(shapely.ops.split(line,point)))
+                        line = new_geo
+                        cnt+=1
+                except:
+                    pass
+            if cnt > 0:
+                newlst.append(new_geo)
+            else:
+                new_geo = tmp_city.geometry[i]
+        else:
+            new_geo = shapely.geometry.MultiLineString(list(tmp_one_gdf[tmp_one_gdf.osm_id 
+                                                                    == tmp_city.osm_id[i]].geometry))
+    else:
+        new_geo = tmp_city.geometry[i]
     #
+    lst_uu_geo.append(new_geo)
+# 
+try:
+    tmp_city['uu_geo'] = lst_uu_geo
+except:
+    print("Error_uu")
+#
+new_df = []
+i=0
+for i in (range(len(tmp_city))):
+    
+    one_line = tmp_city.uu_geo[i]
+    try:
+        len_ol = len(one_line)
+        j = 0
+        for j in range(len_ol):
+            lst_one = list(tmp_city.iloc[i][:-1])
+            lst_one.append(one_line[j])
+            new_df.append(lst_one)
+    except:
+        new_df.append(list(tmp_city.iloc[i]))
+# 
 
+new_gdf = gpd.GeoDataFrame(columns=tmp_city.columns, data=new_df)
+del new_gdf['geometry']
+new_gdf = new_gdf.rename(columns={'uu_geo':'geometry'})
+new_gdf.crs='epsg:4326'
 
-    # объединение все ребер в одни граф, кроме пустых значений и дубликатов
-    list_for_one = list(for_one_nan[~for_one_nan.osm_id.isna()].osm_id.unique())
-
-
-    not_nan_graph = graph_info.copy()
-    not_nan_graph = not_nan_graph[(~not_nan_graph.osm_id.isna()) 
-                                  & (~not_nan_graph.osm_id.isin(list_for_one))
-                                 ]
-    #
-
-    graph_filtrd = not_nan_graph.append(for_one_nan).reset_index(drop=True)
-else:
-    graph_filtrd = graph_info.copy()
-##############
+tr_gi = good_graph_info.append(new_gdf).reset_index(drop=True)
+graph_filtrd = tr_gi.copy()
 graph_filtrd['z_order'] = graph_filtrd['z_order'].astype(np.int64)
+#################################
+
+##############
 
 def make_graph_great_again(gdf):
     G = momepy.gdf_to_nx(gdf, approach='primal')
@@ -481,68 +444,6 @@ def make_graph_great_again(gdf):
 
 nodes, new_graph, sub_graph = make_graph_great_again(graph_filtrd)
 
-
-# некоторые ребра могут не пересечься и поэтому останутся подвешенными, хотя визуально накладываются друг на друга
-# это происходит в случаях, когда только одно пересечение, и оно не сработало (не подтянулись поля)
-# поэтому их надо пере_пересечь
-if ((len(sub_graph) > 0) & (len(new_graph) != len(sub_graph))):
-    # создание точек, для того, чтобы пересечь только конечные, а не всю линию
-    list_points = []
-    i=0
-    for i in range(len(sub_graph)):
-        list_points.append(Point(sub_graph.geometry[i].coords[0]))
-        list_points.append(Point(sub_graph.geometry[i].coords[-1]))
-    # 
-    tmp_ponts = gpd.GeoDataFrame(geometry=list_points)
-    tmp_ponts.crs='epsg:4326'
-    
-    buff_tmp = tmp_ponts.copy()
-    buff_tmp = buff_tmp.to_crs('epsg:32637').buffer(0.5).to_crs('epsg:4326')
-    buff_tmp = gpd.GeoDataFrame(geometry=buff_tmp)
-    
-    tmp_graph =  gpd.sjoin(graph_filtrd, buff_tmp, how='inner', 
-                                 op='intersects').drop("index_right", axis=1).reset_index(drop=True)
-    tmp_graph = tmp_graph.drop_duplicates(list(tmp_graph.columns)).reset_index(drop=True)
-    
-    tmp_uu = gpd.GeoDataFrame(geometry = list(unary_union(list(tmp_graph.geometry))))
-    tmp_uu.crs='epsg:4326'
-    # # подтягивание полей с информацией по пересечению геометрий
-    tmp_uu_info = gpd.sjoin(tmp_uu, tmp_graph, how='left', 
-                               op='within').drop("index_right", axis=1).reset_index(drop=True)
-    #####
-    nans_sub = tmp_uu_info[tmp_uu_info.osm_id.isna()].reset_index(drop=True)
-    if len(nans_sub) > 0:
-        nans_sub = nans_sub[['geometry']]
-        nans_sub = nans_sub.reset_index().rename(columns={'index':'sub_link'})
-        nans_sub['sub_link'] = nans_sub['sub_link'] + 1
-
-        ####
-        copy_nans_sub = cut_geo(nans_sub)
-        copy_nans_sub = copy_nans_sub.to_crs('epsg:32637')
-        copy_nans_sub['geometry'] = copy_nans_sub['geometry'].buffer(0.003)
-        copy_nans_sub = copy_nans_sub.to_crs('epsg:4326')
-
-        ####
-        inter_tmp_1 = gpd.sjoin(copy_nans_sub, tmp_graph, how='left', 
-                                   op='intersects').drop("index_right", axis=1).reset_index(drop=True)
-        fill_nan = nans_sub.merge(inter_tmp_1[['sub_link','osm_id', 'name', 'highway', 'waterway',
-               'aerialway', 'barrier', 'man_made', 'z_order', 'other_tags']], how='left', on=['sub_link'])
-        sub_new = tmp_uu_info[~tmp_uu_info.osm_id.isna()][['geometry', 'osm_id', 'name', 'highway', 'waterway', 'aerialway',
-               'barrier', 'man_made', 'z_order', 'other_tags']]
-        sub_new = sub_new.append(fill_nan[['geometry', 'osm_id', 'name', 'highway', 'waterway', 'aerialway',
-               'barrier', 'man_made', 'z_order', 'other_tags']]).reset_index(drop=True)
-    else:
-        sub_new = tmp_uu_info.copy()
-    ###########
-    gf_copy = graph_filtrd.copy()
-    gf_copy['str_geo'] = gf_copy['geometry'].astype(str)
-    tmp_graph['str_geo'] = tmp_graph['geometry'].astype(str)
-    gf_copy = gf_copy[~gf_copy.str_geo.isin(tmp_graph.str_geo)]
-    gf_copy = gf_copy.append(sub_new).reset_index(drop=True)
-    del gf_copy['str_geo']
-
-    nodes, new_graph, sub_graph = make_graph_great_again(gf_copy)
-#
 #################################################
 
 #################################################
@@ -603,20 +504,7 @@ for (key, value) in my_dict.items():
         newDict[key] = value
 #
 
-df_dict_double = pd.DataFrame(columns = ['str_st_end', 'cnt'])
-df_dict_double['str_st_end'] = newDict.keys()
-df_dict_double['cnt'] = newDict.values()
-
-lst_str_st = []
-lst_str_end = []
-i=0
-for i in range(len(df_dict_double)):
-    p_start, p_end = df_dict_double['str_st_end'][i].split("_")
-    lst_str_st.append(p_start)
-    lst_str_end.append(p_end)
-# 
-df_dict_double['p_start'], df_dict_double['p_end'] = lst_str_st, lst_str_end
-
+#
 lst_geo = []
 lst_len_geo = []
 i=0
@@ -666,33 +554,54 @@ try:
     tmp_grph['cut_geo'] = lst_max
 except:
     print("Error_cut_double")
+#
+#########################
+# функция обрезки ребер
+def cut(line, distance):
+    # Cuts a line in two at a distance from its starting point
+    if distance <= 0.0 or distance >= line.length:
+        return [LineString(line)]
+    coords = list(line.coords)
+    for i, p in enumerate(coords):
+        pd = line.project(Point(p))
+        if pd == distance:
+            return [
+                LineString(coords[:i+1]),
+                LineString(coords[i:])]
+        if pd > distance:
+            cp = line.interpolate(distance)
+            return [
+                LineString(coords[:i] + [(cp.x, cp.y)]),
+                LineString([(cp.x, cp.y)] + coords[i:])]
+# 
+#########################
+all_ok = tmp_grph[tmp_grph.cut_geo != 1].reset_index(drop=True)
+cut_gdf = tmp_grph[tmp_grph.cut_geo == 1].reset_index(drop=True)
 
 big_gdf = gpd.GeoDataFrame()
 i=0
-for i in (range(len(tmp_grph))):
-    if tmp_grph.cut_geo[i] == 1:
-        lst_one_geo = cut(tmp_grph.geometry[i], (tmp_grph.geometry[i].length / 2))
-        small_gdf = gpd.GeoDataFrame(geometry=lst_one_geo)
-        small_gdf.crs='epsg:4326'
-        small_gdf = gpd.sjoin(small_gdf, tmp_grph.iloc[[i]], how='left', 
-                                op='intersects').drop("index_right", axis=1)
-
-    else:
-        small_gdf = tmp_grph.iloc[[i]]
+for i in (range(len(cut_gdf))):
+    line = cut_gdf.geometry[i]
+    lst_one_geo = cut(line, (line.length / 2))
+    small_gdf = gpd.GeoDataFrame(geometry=lst_one_geo)
+    small_gdf.crs='epsg:4326'
+    small_gdf = gpd.sjoin(small_gdf, cut_gdf.iloc[[i]], how='left', 
+                            op='intersects').drop("index_right", axis=1)
+    #
     big_gdf = big_gdf.append(small_gdf)
 # 
-big_gdf = big_gdf.reset_index(drop=True)
-del big_gdf['cut_geo']
+big_gdf = all_ok.append(big_gdf).reset_index(drop=True)
 
-#big_gdf.to_file("big_gdf.shp", encoding='utf-8')
+del big_gdf['cut_geo']
 
 big_gdf.crs = 'epsg:4326'
 big_gdf = big_gdf.to_crs('epsg:32637')
+#########################
+
 ############################################
 
 all_graph = momepy.gdf_to_nx(big_gdf)
 all_nodes, all_edges = momepy.nx_to_gdf(all_graph)
-#print(nx.info(all_graph))
 
 all_edges.crs = 'epsg:32637'
 all_edges = all_edges.to_crs('epsg:4326')
@@ -750,17 +659,6 @@ except:
 
 ok_oneway = check_points.copy()
 
-# two_way = check_points[
-    # (~check_points['other_tags'].str.contains('"oneway"=>"yes"', na=False))
-    # & (~check_points['other_tags'].str.contains('"oneway"=>"1"', na=False))]
-# single_oneway = check_points[
-    # ((check_points['other_tags'].str.contains('"oneway"=>"yes"', na=False))
-    # | (check_points['other_tags'].str.contains('"oneway"=>"1"', na=False)))
-    # & (check_points['direction'] == 'direct')]
-# ok_oneway = two_way.append(single_oneway).reset_index(drop=True)
-# #
-
-
 ok_oneway = ok_oneway.reset_index(drop=True)
 ok_oneway = ok_oneway.reset_index()
 ok_oneway = ok_oneway.rename(columns={'index':'link_id'})
@@ -781,23 +679,23 @@ graph_full['mm_len'] = round((graph_full['mm_len'] / 1000), 3)
 # create num_lanes column
 list_lanes = []
 reg = re.compile('[^0-9]')
+
+lst_onw=['oneway"=>"yes','oneway"=>"1','oneway"=>"true', 'oneway"=>"-1']
 i=0
-for i in (range(len(graph_full))):
-    if (('oneway"=>"yes' in str(graph_full.other_tags[i])) 
-            | ('oneway"=>"1' in str(graph_full.other_tags[i]))):
-            if graph_full.direction[i] == 'direct':
-                if '"lanes"=>"' in str(graph_full.other_tags[i]):
-                    str1 = str(graph_full.other_tags[i])
-                    str2 = str1[str1.find('"lanes"=>"') : ].split(",", 1)[0]
-                    int_lanes = int(reg.sub('', str2))
-                    list_lanes.append(int_lanes)
-                else:
-                    list_lanes.append(1)
+for i in range(len(graph_full)):
+    str1 = str(graph_full.other_tags[i])
+    if any((c in str1) for c in lst_onw):
+        if graph_full.direction[i] == 'direct':
+            if '"lanes"=>"' in str1:
+                str2 = str1[str1.find('"lanes"=>"') : ].split(",", 1)[0]
+                int_lanes = int(reg.sub('', str2))
+                list_lanes.append(int_lanes)
             else:
-                list_lanes.append(0)
+                list_lanes.append(1)
+        else:
+            list_lanes.append(0)
     else:
-        if '"lanes"=>"' in str(graph_full.other_tags[i]):
-            str1 = str(graph_full.other_tags[i])
+        if '"lanes"=>"' in str1:
             str2 = str1[str1.find('"lanes"=>"') : ].split(",", 1)[0]
             int_lanes = int(reg.sub('', str2))
             if int_lanes > 1:
@@ -822,7 +720,7 @@ i=0
 for i in (range(len(graph_full))):
     if "railway" in str(graph_full.other_tags[i]):
         if '=>"tram"' in str(graph_full.other_tags[i]):
-            if 'surface"=>"asphalt' in str(graph_full.other_tags[i]):
+            if 'surface' in str(graph_full.other_tags[i]):
                 lst_types.append("TM,CAR,BUS,TB,MT")
             else:
                 lst_types.append("TM")
