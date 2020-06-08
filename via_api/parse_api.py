@@ -43,7 +43,20 @@ warnings.filterwarnings("ignore")
 # minlat,minlon,maxlat,maxlon
 # bbox=57.4553,39.2610,57.8433,40.4736
 
+import time
+import requests as req
+import urllib.request
 
+url='http://overpass-api.de/api/status'
+resp = req.get(url)
+txt_resp = resp.text
+lst_str = txt_resp.split("\n")
+if '2 slots available now.' not in lst_str:
+    url_kill = 'http://overpass-api.de/api/kill_my_queries'
+    response = urllib.request.urlopen(url_kill)
+    del response
+    time.sleep(30)
+#
 
 print("Указать точное название населенного пункта, проверить, совпадает ли на OSM")
 
@@ -208,9 +221,9 @@ else:
 
 
 
-import time
-import requests as req
-import urllib.request
+# import time
+# import requests as req
+# import urllib.request
 
 # bbox=57.4464,39.2596,57.8528,40.4750
 bbox=new_minlat,new_minlon,new_maxlat,new_maxlon

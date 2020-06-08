@@ -98,7 +98,16 @@ for element in ways['elements']:
         except:
             small_lst.append(None)
         try:
-            str_tgs = str(element['tags'])
+            one_tags = element['tags']
+            try:
+                del one_tags['highway']
+            except:
+                pass
+            try:
+                del one_tags['name']
+            except:
+                pass
+            str_tgs = str(one_tags)
             str_tgs = str_tgs.replace("'",'"').replace('{','').replace('}','')
             str_tgs = str_tgs.replace('": "', '"=>"')
             small_lst.append(str_tgs)
@@ -357,11 +366,17 @@ gdf_lines[['osm_id', 'name', 'highway', 'waterway', 'aerialway',
 
 # обрезать для сохранения в шейп
 gdf_lines_shp = gdf_lines.copy()
-i=0
 
+i=0
+lst_ot =[]
 for i in range(len(gdf_lines_shp)):
     if len(str(gdf_lines_shp.other_tags[i])) > 254:
-        gdf_lines_shp.other_tags[i] = gdf_lines_shp.other_tags[i][:254]
+        str_ot = gdf_lines_shp.other_tags[i][:254]
+    else:
+        str_ot = gdf_lines_shp.other_tags[i]
+    lst_ot.append(str_ot)
+# 
+gdf_lines_shp['other_tags'] = lst_ot
 
 gdf_lines_shp.to_file("{}\\gdf_lines_{}_{}_{}.shp".format(path_raw_shp_layers,buff_km, place, str_date), encoding="utf-8")
 # gdf_points.to_file("{}\\gdf_points_{}_{}_{}.shp".format(path_raw_shp_layers,buff_km, place, str_date), encoding="utf-8")
