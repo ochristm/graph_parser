@@ -67,6 +67,17 @@ gdf_poly = gdf_from_osm.gdf_poly
 # gdf_poly.crs='epsg:4326'
 
 ###############
+
+###############
+len_elem = len(gdf_lines)
+time_min = int(len_elem / 121 / 60)
+time_max = int(len_elem / 52 / 60)
+
+time_start = "{:%H:%M:%S}".format(datetime.now())
+print("time start:", time_start)
+print("Estimated time: {} to {} minutes".format(time_min,time_max))
+###############
+
 #path_data = './data/'
 #path_res = './data/'
 
@@ -92,40 +103,51 @@ except:
 # city_graph = read_shp.copy()
 city_graph = gdf_lines.copy()
 
-list_columns = [city_graph['name'], city_graph['other_tags']]
-list_new_columns = []
-for column in (list_columns):
-    list_strings = []
-    for row in (column):
-        new_row = row
-        if (isinstance(bytes(), type(row)) == True):
-            list_new_values = []
-            j=0
-            new_value = ""
-            for j in range(len(row)):
-                try:
-                    new_value = row[j:j+1].decode() 
-                    # декодирование по одному байтовому символу
-                except (UnicodeDecodeError, AttributeError):
+#################
+# list_columns = [city_graph['name'], city_graph['other_tags']]
+np_city_gr = city_graph.to_numpy()
+
+def bytesDecode(list_columns):
+    list_new_columns = []
+    for column in (list_columns):
+        list_strings = []
+        for row in (column):
+            new_row = row
+            if (isinstance(bytes(), type(row)) == True):
+                list_new_values = []
+                j=0
+                new_value = ""
+                for j in range(len(row)):
                     try:
-                        new_value = row[j:j+2].decode() 
-                        # у кириллицы на одну букву два байтовых символа
+                        new_value = row[j:j+1].decode() 
+                        # декодирование по одному байтовому символу
                     except (UnicodeDecodeError, AttributeError):
-                        new_value = ""
-                list_new_values.append(new_value)
-            new_string = ""
-            i=0
-            for i in list_new_values:
-                new_string = new_string+i
-            #if (len(new_string.encode('utf-8')) >= 254): 
-                # максимальная длина строки в shp - 255
-                #new_string = new_string[:254]
-            new_row = new_string + '"' #
-        list_strings.append(new_row)
-#
-    list_new_columns.append(list_strings)
+                        try:
+                            new_value = row[j:j+2].decode() 
+                            # у кириллицы на одну букву два байтовых символа
+                        except (UnicodeDecodeError, AttributeError):
+                            new_value = ""
+                    list_new_values.append(new_value)
+                new_string = ""
+                i=0
+                for i in list_new_values:
+                    new_string = new_string+i
+                #if (len(new_string.encode('utf-8')) >= 254): 
+                    # максимальная длина строки в shp - 255
+                    #new_string = new_string[:254]
+                new_row = new_string + '"' #
+            list_strings.append(new_row)
+    #
+        list_new_columns.append(list_strings)
+    return list_new_columns
+    # 
 # 
-# len(list_new_columns[0])
+ind_name = list(city_graph.columns).index('name')
+ind_ot = list(city_graph.columns).index('other_tags')
+
+list_new_columns = bytesDecode([np_city_gr[:,ind_name], np_city_gr[:,ind_ot]])
+
+#################
 city_graph['name'] = list_new_columns[0]
 city_graph['other_tags'] = list_new_columns[1]
 
@@ -242,17 +264,29 @@ except:
 reverse_oneway = city_graph[city_graph.other_tags.str.contains('oneway"=>"-1', 
                                                                na=False)].reset_index(drop=True)
 #
-lst_geo_new=[]
-i=0
-for i in range(len(city_graph)):
-    if city_graph.osm_id[i] in list(reverse_oneway.osm_id):
-        list_geo = list(city_graph.geometry[i].coords[:])
-        one_reversed_geo = list_geo[::-1]
-        line_2 = LineString(one_reversed_geo)
-        lst_geo_new.append(line_2)
-    else:
-        lst_geo_new.append(city_graph.geometry[i])
+####################
+np_city_gr = city_graph.to_numpy()
+lst_rev_on = list(reverse_oneway.osm_id)
+
+def RevOnwGeo(np_city_gr,lst_rev_on,ind_geo,ind_oi):
+    lst_geo_new=[]
+    i=0
+    for i in range(len(np_city_gr)):
+        if np_city_gr[i][ind_oi] in lst_rev_on:
+            list_geo = list(np_city_gr[i][ind_geo].coords[:])
+            one_reversed_geo = list_geo[::-1]
+            line_2 = LineString(one_reversed_geo)
+            lst_geo_new.append(line_2)
+        else:
+            lst_geo_new.append(np_city_gr[i][ind_geo])
+    #
+    return lst_geo_new
 # 
+ind_geo = list(city_graph.columns).index('geometry')
+ind_oi = list(city_graph.columns).index('osm_id')
+lst_geo_new = RevOnwGeo(np_city_gr,lst_rev_on,ind_geo,ind_oi)
+#################### 
+
 try:
     city_graph['geometry'] = lst_geo_new
 except:
@@ -361,22 +395,27 @@ try:
 except:
     print("Error_uu")
 #
+###############
+np_tmp_ct = tmp_city.to_numpy()
+ind_uug = list(tmp_city.columns).index('uu_geo')
+
 new_df = []
 i=0
-for i in (range(len(tmp_city))):
+for i in (range(len(np_tmp_ct))):
     
-    one_line = tmp_city.uu_geo[i]
+    one_line = np_tmp_ct[i][ind_uug]
     try:
         len_ol = len(one_line)
         j = 0
         for j in range(len_ol):
-            lst_one = list(tmp_city.iloc[i][:-1])
+            lst_one = list(np_tmp_ct[i][:ind_uug])
             lst_one.append(one_line[j])
             new_df.append(lst_one)
     except:
-        new_df.append(list(tmp_city.iloc[i]))
+        new_df.append(list(np_tmp_ct[i]))
 # 
 
+###############
 new_gdf = gpd.GeoDataFrame(columns=tmp_city.columns, data=new_df)
 del new_gdf['geometry']
 new_gdf = new_gdf.rename(columns={'uu_geo':'geometry'})
@@ -386,6 +425,190 @@ tr_gi = good_graph_info.append(new_gdf).reset_index(drop=True)
 graph_filtrd = tr_gi.copy()
 graph_filtrd['z_order'] = graph_filtrd['z_order'].astype(np.int64)
 #################################
+
+#################################################
+# создание digraph (двунаправленного графа)
+
+###### Create Reverse of graph
+#direct_gdf = new_graph[['osm_id', 'name', 'highway', 'z_order', 'other_tags', 'geometry']].copy()
+
+direct_gdf = graph_filtrd[['osm_id', 'name', 'highway', 'z_order', 'other_tags', 'geometry']].copy()
+reverse_gdf = direct_gdf.copy()
+
+###############
+np_rev_gdf = reverse_gdf.to_numpy()
+ind_geo = list(reverse_gdf.columns).index('geometry')
+reversed_geo_all = []
+i=0
+for i in (range(len(np_rev_gdf))):
+    list_geo = list(np_rev_gdf[i][ind_geo].coords[:])
+    one_reversed_geo = list_geo[::-1]
+    line_2 = LineString(one_reversed_geo)
+    reversed_geo_all.append(line_2)
+# 
+###############
+
+#rev_geo = gpd.GeoDataFrame(geometry=reversed_geo_all)
+try:
+    reverse_gdf['rev_geo'] = reversed_geo_all
+    reverse_gdf = reverse_gdf.rename(columns={'geometry':'old_geo', 'rev_geo':'geometry'})
+    reverse_gdf = reverse_gdf[['osm_id', 'name', 'highway', 'z_order', 'other_tags', 'geometry']]
+except:
+    print("Error!")
+
+
+direct_gdf['direction'] = "direct"
+reverse_gdf['direction'] = "reverse"
+all_gdf = direct_gdf.append(reverse_gdf).reset_index(drop=True)
+all_gdf.crs = 'epsg:4326'
+
+
+############################################
+
+# разбиение петель и ребер, где на пару node_from node_to - больше 2 ребер
+
+tmp_grph = all_gdf.copy()
+#
+lst_petl = []
+lst_start = []
+lst_end = []
+lst_stend = []
+
+#############
+np_tmp_gr = tmp_grph.to_numpy()
+ind_geo = list(tmp_grph.columns).index('geometry')
+
+i=0
+for i in (range(len(np_tmp_gr))):
+    if np_tmp_gr[i][ind_geo].coords[0] == np_tmp_gr[i][ind_geo].coords[-1]:
+        lst_petl.append(np_tmp_gr[i][ind_geo])
+    else:
+        lst_stend.append(str(np_tmp_gr[i][ind_geo].coords[0]) + "_" + str(np_tmp_gr[i][ind_geo].coords[-1]))
+# 
+#############
+
+my_dict = {i:lst_stend.count(i) for i in lst_stend}
+
+newDict = {}
+for (key, value) in my_dict.items():
+    if value > 1:
+        newDict[key] = value
+#
+
+#
+lst_geo = []
+lst_len_geo = []
+###########
+# np_tmp_gr = tmp_grph.to_numpy()
+# ind_geo = list(tmp_grph.columns).index('geometry')
+i=0
+for i in range(len(np_tmp_gr)):
+    str_st_end = str(np_tmp_gr[i][ind_geo].coords[0]) + "_" + str(np_tmp_gr[i][ind_geo].coords[-1])
+    if str_st_end in (newDict.keys()):
+        lst_geo.append(str_st_end)
+        lst_len_geo.append(np_tmp_gr[i][ind_geo].length)
+    else:
+        lst_geo.append(None)
+        lst_len_geo.append(None)
+#
+###########
+# 
+tmp_grph['geo_grup'] = lst_geo
+tmp_grph['geo_len'] = lst_len_geo
+
+################
+np_tmp_gr = tmp_grph.to_numpy()
+ind_ggr = list(tmp_grph.columns).index('geo_grup')
+ind_glen = list(tmp_grph.columns).index('geo_len')
+
+dct_gr_len = {}
+i=0
+for i in range(len(np_tmp_gr)):
+    one_group = np_tmp_gr[i][ind_ggr]
+    if one_group not in dct_gr_len.keys():
+        lst_gr_len = []
+        dct_gr_len[one_group] = lst_gr_len
+    dct_gr_len[one_group] = dct_gr_len[one_group] + [np_tmp_gr[i][ind_glen]]  
+# 
+################
+
+del dct_gr_len[None]
+del tmp_grph['geo_len'], tmp_grph['geo_grup']
+
+################
+np_tmp_gr = tmp_grph.to_numpy()
+ind_geo = list(tmp_grph.columns).index('geometry')
+
+lst_max = []
+i=0
+for i in range(len(np_tmp_gr)):
+    one_group = str(np_tmp_gr[i][ind_geo].coords[0]) + "_" + str(np_tmp_gr[i][ind_geo].coords[-1])
+    if one_group in dct_gr_len.keys():
+        if (max(dct_gr_len[one_group]) == np_tmp_gr[i][ind_geo].length):
+            lst_max.append(1)
+        else:
+            lst_max.append(None)
+    elif np_tmp_gr[i][ind_geo].coords[0] == np_tmp_gr[i][ind_geo].coords[-1]:
+        lst_max.append(1)
+    else:
+        lst_max.append(None)
+# 
+################
+
+try:
+    tmp_grph['cut_geo'] = lst_max
+except:
+    print("Error_cut_double")
+#
+#########################
+# функция обрезки ребер
+def cut(line, distance):
+    # Cuts a line in two at a distance from its starting point
+    if distance <= 0.0 or distance >= line.length:
+        return [LineString(line)]
+    coords = list(line.coords)
+    for i, p in enumerate(coords):
+        pd = line.project(Point(p))
+        if pd == distance:
+            return [
+                LineString(coords[:i+1]),
+                LineString(coords[i:])]
+        if pd > distance:
+            cp = line.interpolate(distance)
+            return [
+                LineString(coords[:i] + [(cp.x, cp.y)]),
+                LineString([(cp.x, cp.y)] + coords[i:])]
+# 
+#########################
+all_ok = tmp_grph[tmp_grph.cut_geo != 1].reset_index(drop=True)
+cut_gdf = tmp_grph[tmp_grph.cut_geo == 1].reset_index(drop=True)
+
+################
+np_ctgdf = cut_gdf.to_numpy()
+ind_geo = list(cut_gdf.columns).index('geometry')
+
+big_lst = []
+i=0
+for i in (range(len(np_ctgdf))):
+    line = np_ctgdf[i][ind_geo]
+    lst_one_geo = cut(line, (line.length / 2))
+    one_list = list(np_ctgdf[i,:ind_geo]) + [lst_one_geo[0]] + list(np_ctgdf[i,ind_geo+1:])
+    two_list = list(np_ctgdf[i,:ind_geo]) + [lst_one_geo[1]] + list(np_ctgdf[i,ind_geo+1:])
+    big_lst.append(one_list)
+    big_lst.append(two_list)
+# 
+
+big_gdf = gpd.GeoDataFrame(big_lst, columns=list(cut_gdf.columns))
+################ 
+big_gdf = all_ok.append(big_gdf).reset_index(drop=True)
+
+del big_gdf['cut_geo']
+
+big_gdf.crs = 'epsg:4326'
+big_gdf = big_gdf.to_crs('epsg:32637')
+#########################
+
+############################################
 
 ##############
 
@@ -424,192 +647,21 @@ def make_graph_great_again(gdf):
         except:
             pass
         cur_graph = main_graph
-        #print(nx.info(cur_graph))
-#         return cur_graph, list_subgraphs
-    # del subgraphs if exist
-#     cur_graph, list_subgraphs = del_subgraphs(G)
+        #
     #####
     
-    sub_graph = cur_graph
-    if len(list_subgraphs) > 1:
-        sub_graph = nx.MultiGraph()
-        i=0
-        for i in range(len(list_subgraphs)):
-            H = list_subgraphs[i]
-            sub_graph.add_edges_from(H.edges(data=True))
-            sub_graph.add_nodes_from(H.nodes(data=True))
     #create gdfs
     # формирование таблиц из графа и узлов (nodes)
     nodes, new_graph = momepy.nx_to_gdf(cur_graph)
-    nodes.crs='epsg:4326'
-    new_graph.crs='epsg:4326'
-    
-    sub_nodes, sub_graph = momepy.nx_to_gdf(sub_graph)
-    sub_graph.crs='epsg:4326'
-    sub_nodes.crs='epsg:4326'
 
-    return nodes, new_graph, sub_graph
+    return nodes, new_graph
 
-nodes, new_graph, sub_graph = make_graph_great_again(graph_filtrd)
+all_nodes, all_edges = make_graph_great_again(big_gdf)
 
 #################################################
 
-#################################################
-# создание digraph (двунаправленного графа)
-
-###### Create Reverse of graph
-
-direct_gdf = new_graph[['osm_id', 'name', 'highway', 'z_order', 'other_tags', 'geometry']].copy()
-reverse_gdf = direct_gdf.copy()
-reversed_geo_all = []
-i=0
-for i in (range(len(reverse_gdf))):
-    list_geo = list(reverse_gdf.geometry[i].coords[:])
-    one_reversed_geo = list_geo[::-1]
-    line_2 = LineString(one_reversed_geo)
-    reversed_geo_all.append(line_2)
-# 
-
-
-rev_geo = gpd.GeoDataFrame(geometry=reversed_geo_all)
-try:
-    reverse_gdf['rev_geo'] = rev_geo['geometry']
-    reverse_gdf = reverse_gdf.rename(columns={'geometry':'old_geo', 'rev_geo':'geometry'})
-    reverse_gdf = reverse_gdf[['osm_id', 'name', 'highway', 'z_order', 'other_tags', 'geometry']]
-except:
-    print("Error!")
-
-
-direct_gdf['direction'] = "direct"
-reverse_gdf['direction'] = "reverse"
-all_gdf = direct_gdf.append(reverse_gdf).reset_index(drop=True)
-all_gdf.crs = 'epsg:4326'
-
-
-############################################
-
-# разбиение петель и ребер, где на пару node_from node_to - больше 2 ребер
-
-tmp_grph = all_gdf.copy()
-#
-lst_petl = []
-lst_start = []
-lst_end = []
-lst_stend = []
-i=0
-for i in (range(len(tmp_grph))):
-    if tmp_grph.geometry[i].coords[0] == tmp_grph.geometry[i].coords[-1]:
-        lst_petl.append(tmp_grph.geometry[i])
-    else:
-        lst_stend.append(str(tmp_grph.geometry[i].coords[0]) + "_" + str(tmp_grph.geometry[i].coords[-1]))
-# 
-
-my_dict = {i:lst_stend.count(i) for i in lst_stend}
-
-newDict = {}
-for (key, value) in my_dict.items():
-    if value > 1:
-        newDict[key] = value
-#
-
-#
-lst_geo = []
-lst_len_geo = []
-i=0
-for i in range(len(tmp_grph)):
-    str_st_end = str(tmp_grph.geometry[i].coords[0]) + "_" + str(tmp_grph.geometry[i].coords[-1])
-    if str_st_end in (newDict.keys()):
-        lst_geo.append(str_st_end)
-        lst_len_geo.append(tmp_grph.geometry[i].length)
-    else:
-        lst_geo.append(None)
-        lst_len_geo.append(None)
-#
-
-# gdf_to_cut = tmp_grph.copy()
-tmp_grph['geo_grup'] = lst_geo
-tmp_grph['geo_len'] = lst_len_geo
-
-i=0
-
-dct_gr_len = {}
-i=0
-for i in range(len(tmp_grph)):
-    one_group = tmp_grph.geo_grup[i]
-    if one_group not in dct_gr_len.keys():
-        lst_gr_len = []
-        dct_gr_len[one_group] = lst_gr_len
-    dct_gr_len[one_group] = dct_gr_len[one_group] + [tmp_grph.geo_len[i]]  
-# 
-del dct_gr_len[None]
-del tmp_grph['geo_len'], tmp_grph['geo_grup']
-
-lst_max = []
-i=0
-for i in range(len(tmp_grph)):
-    one_group = str(tmp_grph.geometry[i].coords[0]) + "_" + str(tmp_grph.geometry[i].coords[-1])
-    if one_group in dct_gr_len.keys():
-        if (max(dct_gr_len[one_group]) == tmp_grph.geometry[i].length):
-            lst_max.append(1)
-        else:
-            lst_max.append(None)
-    elif tmp_grph.geometry[i].coords[0] == tmp_grph.geometry[i].coords[-1]:
-        lst_max.append(1)
-    else:
-        lst_max.append(None)
-# 
-try:
-    tmp_grph['cut_geo'] = lst_max
-except:
-    print("Error_cut_double")
-#
-#########################
-# функция обрезки ребер
-def cut(line, distance):
-    # Cuts a line in two at a distance from its starting point
-    if distance <= 0.0 or distance >= line.length:
-        return [LineString(line)]
-    coords = list(line.coords)
-    for i, p in enumerate(coords):
-        pd = line.project(Point(p))
-        if pd == distance:
-            return [
-                LineString(coords[:i+1]),
-                LineString(coords[i:])]
-        if pd > distance:
-            cp = line.interpolate(distance)
-            return [
-                LineString(coords[:i] + [(cp.x, cp.y)]),
-                LineString([(cp.x, cp.y)] + coords[i:])]
-# 
-#########################
-all_ok = tmp_grph[tmp_grph.cut_geo != 1].reset_index(drop=True)
-cut_gdf = tmp_grph[tmp_grph.cut_geo == 1].reset_index(drop=True)
-
-big_gdf = gpd.GeoDataFrame()
-i=0
-for i in (range(len(cut_gdf))):
-    line = cut_gdf.geometry[i]
-    lst_one_geo = cut(line, (line.length / 2))
-    small_gdf = gpd.GeoDataFrame(geometry=lst_one_geo)
-    small_gdf.crs='epsg:4326'
-    small_gdf = gpd.sjoin(small_gdf, cut_gdf.iloc[[i]], how='left', 
-                            op='intersects').drop("index_right", axis=1)
-    #
-    big_gdf = big_gdf.append(small_gdf)
-# 
-big_gdf = all_ok.append(big_gdf).reset_index(drop=True)
-
-del big_gdf['cut_geo']
-
-big_gdf.crs = 'epsg:4326'
-big_gdf = big_gdf.to_crs('epsg:32637')
-#########################
-
-############################################
-
-all_graph = momepy.gdf_to_nx(big_gdf)
-all_nodes, all_edges = momepy.nx_to_gdf(all_graph)
+# all_graph = momepy.gdf_to_nx(big_gdf)
+# all_nodes, all_edges = momepy.nx_to_gdf(all_graph)
 
 all_edges.crs = 'epsg:32637'
 all_edges = all_edges.to_crs('epsg:4326')
@@ -634,28 +686,39 @@ check_points = check_points.rename(columns={'geometry': 'end_geometry'})
 
 del check_points['nodeID']
 
-check_points['start_true'] = None
-check_points['end_true'] = None
+##################
+np_cp = check_points.to_numpy()
+ind_ne = list(check_points.columns).index('node_end')
+ind_ns = list(check_points.columns).index('node_start')
+ind_sg = list(check_points.columns).index('start_geometry')
+ind_eg = list(check_points.columns).index('end_geometry')
+ind_lg = list(check_points.columns).index('line_geometry')
+
+# check_points['start_true'] = None
+# check_points['end_true'] = None
+
 list_check_start = []
 list_check_end = []
 i=0
-for i in (range(len(check_points))):
-    if check_points.start_geometry[i].coords[0] == check_points.line_geometry[i].coords[0]:
-        list_check_start.append(check_points.node_start[i])
-    elif check_points.end_geometry[i].coords[0] == check_points.line_geometry[i].coords[0]:
-        list_check_start.append(check_points.node_end[i])
+for i in (range(len(np_cp))):
+    if np_cp[i][ind_sg].coords[0] == np_cp[i][ind_lg].coords[0]:
+        list_check_start.append(np_cp[i][ind_ns])
+    elif np_cp[i][ind_eg].coords[0] == np_cp[i][ind_lg].coords[0]:
+        list_check_start.append(np_cp[i][ind_ne])
     else:
         list_check_start.append(None)
 # 
 
-for ii in (range(len(check_points))):
-    if check_points.end_geometry[ii].coords[0] == check_points.line_geometry[ii].coords[-1]:
-        list_check_end.append(check_points.node_end[ii])
-    elif check_points.start_geometry[ii].coords[0] == check_points.line_geometry[ii].coords[-1]:
-        list_check_end.append(check_points.node_start[ii])
+for ii in (range(len(np_cp))):
+    if np_cp[ii][ind_eg].coords[0] == np_cp[ii][ind_lg].coords[-1]:
+        list_check_end.append(np_cp[ii][ind_ne])
+    elif np_cp[ii][ind_sg].coords[0] == np_cp[ii][ind_lg].coords[-1]:
+        list_check_end.append(np_cp[ii][ind_ns])
     else:
         list_check_end.append(None)
-# 
+#
+##################
+
 try:
     check_points['start_true'] = list_check_start
     check_points['end_true'] = list_check_end
@@ -684,16 +747,22 @@ graph_full.crs = 'epsg:4326'
 graph_full['z_order'] = graph_full['z_order'].astype(np.int64)
 graph_full['mm_len'] = round((graph_full['mm_len'] / 1000), 3)
 
+
+############
 # create num_lanes column
+np_gf = graph_full.to_numpy()
+ind_ot = list(graph_full.columns).index('other_tags')
+ind_dir = list(graph_full.columns).index('direction')
+
 list_lanes = []
 reg = re.compile('[^0-9]')
 
 lst_onw=['oneway"=>"yes','oneway"=>"1','oneway"=>"true', 'oneway"=>"-1']
 i=0
-for i in range(len(graph_full)):
-    str1 = str(graph_full.other_tags[i])
+for i in range(len(np_gf)):
+    str1 = str(np_gf[i][ind_ot])
     if any((c in str1) for c in lst_onw):
-        if graph_full.direction[i] == 'direct':
+        if np_gf[i][ind_dir] == 'direct':
             if '"lanes"=>"' in str1:
                 str2 = str1[str1.find('"lanes"=>"') : ].split(",", 1)[0]
                 int_lanes = int(reg.sub('', str2))
@@ -707,7 +776,7 @@ for i in range(len(graph_full)):
             str2 = str1[str1.find('"lanes"=>"') : ].split(",", 1)[0]
             int_lanes = int(reg.sub('', str2))
             if int_lanes > 1:
-                if graph_full.direction[i] == 'direct':
+                if np_gf[i][ind_dir] == 'direct':
                     list_lanes.append(math.ceil(int_lanes/2))
                 else:
                     list_lanes.append(math.floor(int_lanes/2))
@@ -716,36 +785,42 @@ for i in range(len(graph_full)):
         else:
             list_lanes.append(1)
 # 
+############
+
 try:
     graph_full['NUMLANES'] = list_lanes
 except:
     print("Error2")
 #  
 
+#############
+np_gf = graph_full.to_numpy()
+ind_ot = list(graph_full.columns).index('other_tags')
 lst_types = []
 
 i=0
-for i in (range(len(graph_full))):
-    if "railway" in str(graph_full.other_tags[i]):
-        if '=>"tram"' in str(graph_full.other_tags[i]):
-            if 'surface' in str(graph_full.other_tags[i]):
+for i in (range(len(np_gf))):
+    if "railway" in str(np_gf[i][ind_ot]):
+        if '=>"tram"' in str(np_gf[i][ind_ot]):
+            if 'surface' in str(np_gf[i][ind_ot]):
                 lst_types.append("TM,CAR,BUS,TB,MT")
             else:
                 lst_types.append("TM")
-        elif 'subway' in str(graph_full.other_tags[i]):
+        elif 'subway' in str(np_gf[i][ind_ot]):
             lst_types.append("MTR")
         else:
             lst_types.append("E")
     else:
         if (
-            ('psv"=>"only"' in str(graph_full.other_tags[i]))
+            ('psv"=>"only"' in str(np_gf[i][ind_ot]))
             |
-            (('psv"=>"yes"' in str(graph_full.other_tags[i]))
-                & ('vehicle"=>"no"' in str(graph_full.other_tags[i])))):
+            (('psv"=>"yes"' in str(np_gf[i][ind_ot]))
+                & ('vehicle"=>"no"' in str(np_gf[i][ind_ot])))):
             lst_types.append("BUS,TB,MT")
         else:
             lst_types.append("CAR,BUS,TB,MT")
 #  
+#############
 
 try:
     graph_full['TSYSSET'] = lst_types
@@ -756,34 +831,44 @@ except:
 ##############################
 # add type link
 
+################
+# add type link
+np_gf = graph_full.to_numpy()
+ind_ot = list(graph_full.columns).index('other_tags')
+ind_hw = list(graph_full.columns).index('highway')
+ind_nm = list(graph_full.columns).index('name')
+ind_nl = list(graph_full.columns).index('NUMLANES')
+
 lst_typeno = []
 i=0
-for i in range(len(graph_full)):
-    if "railway" in str(graph_full.other_tags[i]):
-        if "subway" in str(graph_full.other_tags[i]):
+for i in range(len(np_gf)):
+    if "railway" in str(np_gf[i][ind_ot]):
+        if "subway" in str(np_gf[i][ind_ot]):
             lst_typeno.append(10)
-        elif "tram" in str(graph_full.other_tags[i]):
+        elif "tram" in str(np_gf[i][ind_ot]):
             lst_typeno.append(40)
         else:
             lst_typeno.append(20)
-    elif graph_full.NUMLANES[i] == 0:
+    elif np_gf[i][ind_nl] == 0:
         lst_typeno.append(0)
     else:
-        if graph_full.highway[i] in ['motorway','trunk']:
+        if np_gf[i][ind_hw] in ['motorway','trunk']:
             lst_typeno.append(1)
-        elif graph_full.highway[i] == 'primary':
+        elif np_gf[i][ind_hw] == 'primary':
             lst_typeno.append(2)
-        elif graph_full.highway[i] == 'secondary':
+        elif np_gf[i][ind_hw] == 'secondary':
             lst_typeno.append(3)
-        elif graph_full.highway[i] == 'tertiary':
+        elif np_gf[i][ind_hw] == 'tertiary':
             lst_typeno.append(4)
-        elif graph_full.highway[i] in ['motorway_link','trunk_link', 'primary_link', 'secondary_link', 'tertiary_link']:
+        elif np_gf[i][ind_hw] in ['motorway_link','trunk_link', 'primary_link', 'secondary_link', 'tertiary_link']:
             lst_typeno.append(5)
-        elif graph_full.name[i] != None:
+        elif np_gf[i][ind_nm] != None:
             lst_typeno.append(6)
         else:
             lst_typeno.append(7)
 # 
+
+################
 
 try:
     graph_full['TYPENO_2'] = lst_typeno
@@ -803,12 +888,20 @@ graph_full = graph_full.rename(columns={'link_id':'NO', 'mm_len':'LENGTH',
 
 # обрезать для сохранения в шейп
 
-i=0
 graph_full_shp = graph_full.copy()
-for i in range(len(graph_full_shp)):
-    if len(str(graph_full_shp.other_tags[i])) > 254:
-        graph_full_shp.other_tags[i] = graph_full_shp.other_tags[i][:254]
+np_gf = graph_full_shp.to_numpy()
+ind_ot = list(graph_full_shp.columns).index('other_tags')
+
+lst_ot = []
+i=0
+for i in range(len(np_gf)):
+    if len(str(np_gf[i][ind_ot])) > 254:
+        lst_ot.append(np_gf[i][ind_ot][:254])
+    else:
+        lst_ot.append(np_gf[i][ind_ot])
 # 
+graph_full_shp['other_tags'] = lst_ot
+
 graph_full_shp.to_file('{}\\new_graph_{}_{}_{}.shp'.format(path_res_edges,buff_km, place, str_date), encoding='utf-8')
 #graph_full_shp.to_file('./new_graph_{}_{}_{}.shp'.format(buff_km, place, str_date), encoding='utf-8')
 
@@ -819,5 +912,8 @@ all_nodes['YCOORD'] = all_nodes.geometry.y
 all_nodes.to_file('{}\\nodes_{}_{}_{}.shp'.format(path_res_nodes,buff_km, place, str_date), encoding='utf-8')
 #all_nodes.to_file('./all_nodes_{}_{}_{}.shp'.format(buff_km, place, str_date), encoding='utf-8')
 
+
+time_end = "{:%H:%M:%S}".format(datetime.now())
+print("time end:", time_end)
 print("Results are in folder 'res'")
 print("Done")
