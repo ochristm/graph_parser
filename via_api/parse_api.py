@@ -2,6 +2,9 @@ print()
 print("________________________________________")
 print()
 print("Part  1. Parse data from OSM.")
+from datetime import datetime
+time_entry = "{:%H:%M:%S}".format(datetime.now())
+print("time entry:", time_entry)
 print("Please wait...")
 print()
 
@@ -15,16 +18,16 @@ path_gdal = os.path.join(proj_lib, 'gdal')
 os.environ ['PROJ_LIB']=proj_lib
 os.environ ['GDAL_DATA']=path_gdal
 
-import networkx as nx
-import osmnx as ox
-import pandas as pd
-import geopandas as gpd
-import shapely
-from shapely.geometry import LineString, MultiLineString, Polygon, Point
+# import networkx as nx
+# import osmnx as ox
+#import pandas as pd
+#import geopandas as gpd
+# import shapely
+# from shapely.geometry import LineString, MultiLineString, Polygon, Point
 
-import wget
-import gdal, ogr
-import momepy
+# import wget
+# import gdal, ogr
+# import momepy
 from datetime import datetime
 import re
 # import girs
@@ -33,7 +36,7 @@ import overpass
 from pyproj import Proj, transform
 
 #отключить предупреждения pandas (так быстрее считает!!!):
-pd.options.mode.chained_assignment = None
+#pd.options.mode.chained_assignment = None
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -47,16 +50,41 @@ import time
 import requests as req
 import urllib.request
 
-url='http://overpass-api.de/api/status'
-resp = req.get(url)
-txt_resp = resp.text
-lst_str = txt_resp.split("\n")
-if '2 slots available now.' not in lst_str:
-    url_kill = 'http://overpass-api.de/api/kill_my_queries'
-    response = urllib.request.urlopen(url_kill)
-    del response
-    time.sleep(30)
-#
+################
+def check_query():
+    cnt=1
+    while True:
+        url_kill = 'http://overpass-api.de/api/kill_my_queries'
+        response = urllib.request.urlopen(url_kill)
+        url='http://overpass-api.de/api/status'
+        resp = req.get(url)
+        txt_resp = resp.text
+        lst_str = txt_resp.split("\n")
+        
+        del response, resp
+        if ('2 slots available now.' in lst_str) or ('1 slots available now.' in lst_str):
+            break
+        elif cnt == 3:
+            print("no available slots in API")
+            print("too long to wait, exit script")
+            slt_time = []
+            for lv in new_lst_str:
+                if "Slot available after" in lv:
+                    slt_time.append(lv)
+            # 
+            print(url)
+            print(url_kill)
+            print(slt_time)
+            exit()
+            break
+        else:
+            print("no available slots in API, try №:",cnt)
+            print("wait...")
+            cnt+=1
+            time.sleep(30)
+# 
+################
+check_query()
 
 print("Указать точное название населенного пункта, проверить, совпадает ли на OSM")
 
@@ -68,14 +96,21 @@ resp = {}
 resp["elements"] = []
 api = overpass.API()
 while len(resp["elements"]) == 0:
-    try:
+    resp = api.get(
+    """[out:json][timeout:25];
+    relation["name"="{}"];
+    out bb;""".format(name_place), 
+    build=False, responseformat="json") #area["ISO3166-1"="RU"][admin_level=6];
+    type_resp = 'relation'
+    if len(resp["elements"]) == 0:
+        check_query()
         resp = api.get(
         """[out:json][timeout:25];
-        relation["name"="{}"];
+        way["name"="{}"];
         out bb;""".format(name_place), 
-        build=False, responseformat="json") #area["ISO3166-1"="RU"][admin_level=6];
-    except:
-        resp["elements"] = []
+        build=False, responseformat="json")
+        type_resp = 'way'
+#
     if len(resp["elements"]) != 0:
         #############################
         if len(resp['elements']) > 1:
@@ -100,8 +135,9 @@ while len(resp["elements"]) == 0:
                     print("to check which one do you need, go to:")
                     print("https://overpass-turbo.eu/#")
                     print("Clear everything and insert this code (instead of 123456 use relationID)")
+                    print("If not found - try way() or relation()")
                     print()
-                    print("relation(123456);")
+                    print("{}(123456);".format(type_resp))
                     print("(._;>;);")
                     print("out;")
                     print()
@@ -230,16 +266,8 @@ bbox=new_minlat,new_minlon,new_maxlat,new_maxlon
 
 print("Getting restrictions")
 print("Please, wait...")
-url='http://overpass-api.de/api/status'
-resp = req.get(url)
-txt_resp = resp.text
-lst_str = txt_resp.split("\n")
-if '2 slots available now.' not in lst_str:
-    url_kill = 'http://overpass-api.de/api/kill_my_queries'
-    response = urllib.request.urlopen(url_kill)
-    del response
-    time.sleep(30)
-# 
+
+check_query()
 
 lst_highway_notok = ['steps', 'pedestrian', 'footway', 'path', 'raceway', 
                      'road', 'track', 'planned', 'proposed', 'cycleway']
@@ -263,84 +291,17 @@ out geom;""".format(bbox=bbox,new_str=new_str),
 build=False, responseformat="json")
 
 
-
-big_lst=[]
-lst_one = []
-cnt=0
-for element in ways['elements']:
-    if element['type'] == 'way':
-        lst_line = []
-        for g in range(len(element['geometry'])):
-            lon = element['geometry'][g]['lon']
-            lat = element['geometry'][g]['lat']
-            lst_line.append((lon, lat))
-        line = LineString(lst_line)
-        small_lst=[]
-        small_lst.append(element['id'])
-        try:
-            small_lst.append(element['tags']['highway'])
-        except:
-            small_lst.append(None)
-        try:
-            str_tgs = str(element['tags'])
-            str_tgs = str_tgs.replace("'",'"').replace('{','').replace('}','')
-            str_tgs = str_tgs.replace('": "', '"=>"')
-            small_lst.append(str_tgs)
-        except:
-            small_lst.append(None)
-        small_lst.append(line)
-        big_lst.append(small_lst)
-    #
-    if element['type'] == 'relation':
-        one_el = element
-        osm_id_restr = one_el['id']
-        try:
-            one_restr = one_el['tags']['restriction']
-            all_tags = str(one_el['tags'])
-            all_tags = all_tags.replace("'type': 'restriction'", "").replace("'restriction': ", "")
-            all_tags = all_tags.replace(", }","}").replace("': '", ":")
-            all_tags = all_tags.replace("{", "").replace("}", "").replace("'", "")
-            for j in range(len(one_el['members'])):
-                geo_type = one_el['members'][j]['type']
-                osm_id_graph = one_el['members'][j]['ref']
-                role = one_el['members'][j]['role']
-                lst_one.append([osm_id_restr,all_tags,role,osm_id_graph,geo_type])
-        except:
-            #restriction:hgv
-            pass
-    #
-    cnt+=1
-#
-
-
-
-gdf_lines = gpd.GeoDataFrame(data=big_lst, columns=['osm_id', 'highway', 'other_tags', 'geometry'])
-gdf_lines.crs='epsg:4326'
-
-
-
-df = pd.DataFrame(data=lst_one, columns=['osm_id_restr', 'restr_type', 'role', 'osm_id_graph', 'geo_type'])
-
-
-
 print("Getting borders")
 print("Please, wait...")
-url='http://overpass-api.de/api/status'
-resp = req.get(url)
-txt_resp = resp.text
-lst_str = txt_resp.split("\n")
-if '2 slots available now.' not in lst_str:
-    url_kill = 'http://overpass-api.de/api/kill_my_queries'
-    response = urllib.request.urlopen(url_kill)
-    del response
-    time.sleep(30)
-# 
 
+check_query()
+
+#
 poly_resp = api.get(
     """[out:json][timeout:25];
-    relation({});
+    {}({});
     (._;>;);
-    out geom;""".format(poly_osmid), 
+    out geom;""".format(type_resp,poly_osmid), 
     build=False, responseformat="json")
-# Collect coords into list
-
+# 
+print("Done")

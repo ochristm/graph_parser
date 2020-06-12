@@ -25,20 +25,20 @@ os.environ ['GDAL_DATA']=path_gdal
 # os.environ ['PROJ_LIB']=r'C:\Users\popova_kv\AppData\Local\Continuum\anaconda3\Library\share'
 # os.environ ['GDAL_DATA']=r'C:\Users\popova_kv\AppData\Local\Continuum\anaconda3\Library\share\gdal'
 
-import networkx as nx
-import osmnx as ox
+# import networkx as nx
+# import osmnx as ox
 import pandas as pd
 import geopandas as gpd
 import shapely
 import shapely.wkt
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
-from tqdm.notebook import tqdm
+#from tqdm.notebook import tqdm
 
 #import wget
-from osgeo import gdal, ogr
+#from osgeo import gdal, ogr
 
-import momepy
-from datetime import datetime
+#import momepy
+#from datetime import datetime
 import re
 # import girs
 # from girs.feat.layers import LayersReader

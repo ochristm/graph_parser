@@ -1,12 +1,7 @@
 print("Running...")
-import pandas as pd
-import numpy as np
-from datetime import datetime
-import geopandas as gpd
-import shapely
 
 import os
-from tqdm.notebook import tqdm
+#from tqdm.notebook import tqdm
 
 # # В случе ошибки RuntimeError: b'no arguments in initialization list'
 # # Если действие выше не помогло, то нужно задать системной переменной PROJ_LIB
@@ -23,7 +18,12 @@ os.environ ['GDAL_DATA']=path_gdal
 
 # os.environ ['PROJ_LIB']=r'C:\Users\popova_kv\AppData\Local\Continuum\anaconda3\Library\share'
 # os.environ ['GDAL_DATA']=r'C:\Users\popova_kv\AppData\Local\Continuum\anaconda3\Library\share\gdal'
-    
+
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import geopandas as gpd
+import shapely
 #отключить предупреждения pandas (так быстрее считает!!!):
 pd.options.mode.chained_assignment = None
 
@@ -35,7 +35,6 @@ from shapely.ops import unary_union
 import networkx as nx
 import momepy
 import re
-import math
 
 import math
 from math import degrees, acos
@@ -47,8 +46,8 @@ from math import degrees, acos
 filename = ''
 
 while (os.path.isfile(filename) != True):
-    print("Введите путь и название файла OSM, пример:")
-    print(".\\data\\20200430_2004\\raw\\osm\\map_2_Yaroslavl,Russia_20200430_2004.osm")
+    print("Введите путь и название нового графа, пример:")
+    print(".\\data\\1701435\\20200608_1650\\res\\new_graph_2_Ярославль_20200608_1650.shp")
     filename = input()
     filename = '.\data' + filename.split(".\data")[1]
     if os.path.isfile(filename) == False:

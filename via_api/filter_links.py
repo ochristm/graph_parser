@@ -25,7 +25,7 @@ from datetime import datetime
 import geopandas as gpd
 import shapely
 
-from tqdm.notebook import tqdm
+#from tqdm.notebook import tqdm
 
 # # В случе ошибки RuntimeError: b'no arguments in initialization list'
 # # Если действие выше не помогло, то нужно задать системной переменной PROJ_LIB
@@ -39,12 +39,12 @@ from tqdm.notebook import tqdm
 
 from shapely import wkt
 from shapely.wkt import loads
-from shapely.geometry import Point, LineString, mapping, shape
+from shapely.geometry import Point, LineString, MultiLineString, mapping, shape
 from shapely.ops import unary_union
 
 import networkx as nx
 import momepy
-import osmnx as ox
+#import osmnx as ox
 import re
 import math
 
@@ -70,8 +70,8 @@ gdf_poly = gdf_from_osm.gdf_poly
 
 ###############
 len_elem = len(gdf_lines)
-time_min = int(len_elem / 121 / 60)
-time_max = int(len_elem / 52 / 60)
+time_min = int(len_elem / 125 / 60)
+time_max = int(len_elem / 60 / 60)
 
 time_start = "{:%H:%M:%S}".format(datetime.now())
 print("time start:", time_start)
@@ -104,8 +104,8 @@ except:
 city_graph = gdf_lines.copy()
 
 #################
-# list_columns = [city_graph['name'], city_graph['other_tags']]
-np_city_gr = city_graph.to_numpy()
+#list_columns = [city_graph['name'], city_graph['other_tags']]
+#np_city_gr = city_graph.to_numpy()
 
 def bytesDecode(list_columns):
     list_new_columns = []
@@ -142,10 +142,13 @@ def bytesDecode(list_columns):
     return list_new_columns
     # 
 # 
-ind_name = list(city_graph.columns).index('name')
-ind_ot = list(city_graph.columns).index('other_tags')
+# ind_name = list(city_graph.columns).index('name')
+# ind_ot = list(city_graph.columns).index('other_tags')
+list_columns = [city_graph['name'], city_graph['other_tags']]
+#list_columns = list(np_city_gr[:,ind_name], np_city_gr[:,ind_ot])
 
-list_new_columns = bytesDecode([np_city_gr[:,ind_name], np_city_gr[:,ind_ot]])
+list_new_columns = bytesDecode(list_columns)
+
 
 #################
 city_graph['name'] = list_new_columns[0]
@@ -199,25 +202,61 @@ constr = city_graph[(((city_graph.highway == 'construction')
                             & (~(city_graph.name.isna()))
                             & ((city_graph.highway.isna()))))].reset_index(drop=True)
 #
+########
+def intersect_using_spatial_index(source_gdf, intersecting_gdf):
+    """
+    Conduct spatial intersection using spatial index for candidates GeoDataFrame to make queries faster.
+    Note, with this function, you can have multiple Polygons in the 'intersecting_gdf' and it will return all the points
+    intersect with ANY of those geometries.
+    """
+    source_sindex = source_gdf.sindex
+    possible_matches_index = []
+
+    # 'itertuples()' function is a faster version of 'iterrows()'
+    for other in intersecting_gdf.itertuples():
+        bounds = other.geometry.bounds
+        c = list(source_sindex.intersection(bounds))
+        possible_matches_index += c
+
+    # Get unique candidates
+    unique_candidate_matches = list(set(possible_matches_index))
+    possible_matches = source_gdf.iloc[unique_candidate_matches]
+
+    # Conduct the actual intersect
+    result = possible_matches.loc[possible_matches.intersects(intersecting_gdf.unary_union)]
+    return result
+########
+#########
+#city_graph2 = city_graph.copy()
+cg_crs = city_graph.crs
+np_cg2 = city_graph.to_numpy()
+ind_hw = list(city_graph.columns).index('highway')
+ind_oi = list(city_graph.columns).index('osm_id')
 
 lst_contstr_name=list(constr.name.unique())
 i=0
-for i in range(len(lst_contstr_name)):
+for i in (range(len(lst_contstr_name))):
     one_name = lst_contstr_name[i]
     df_small = constr[constr.name == one_name].reset_index(drop=True)
-    sj_df = gpd.sjoin(df_small, city_graph[['highway', 'name', 'geometry']], 
-                      how='inner', op='intersects').drop("index_right", axis=1)
-    lst_hw = list(sj_df[((sj_df.name_right == one_name) 
-                         & (sj_df.highway_right != 'construction') 
-                         & ((sj_df.highway_right.astype(str) != 'None')))].highway_right.unique())
-    try:
+    sj_df = intersect_using_spatial_index(city_graph,df_small)
+#     sj_df = gpd.sjoin(df_small, city_graph[['highway', 'name', 'geometry']], 
+#                       how='inner', op='intersects').drop("index_right", axis=1)
+    lst_hw = list(sj_df[((sj_df.name == one_name) 
+                         & (sj_df.highway != 'construction') 
+                         & ((sj_df.highway.astype(str) != 'None')))].highway.unique())
+    if lst_hw:
         new_hw = lst_hw[0]
-        for j in range(len(df_small)):
-            ind_oi = list(city_graph.osm_id).index(df_small.osm_id[j])
-            city_graph.highway[ind_oi] = new_hw
-    except:
-        pass
+    else:
+        new_hw = constr.highway[i]
+    for j in range(len(df_small)):
+        ind_big = list(np_cg2[:,ind_oi]).index(df_small.osm_id[j])
+        np_cg2[ind_big,ind_hw] = new_hw
 # 
+lst_col = list(city_graph.columns)
+
+city_graph = gpd.GeoDataFrame(np_cg2, columns=lst_col)
+city_graph.crs = cg_crs
+#########
 #############################
 
 # удаление ненужных и добавление нужных жд и трамвайных путей
@@ -324,48 +363,57 @@ tmp_city = city_graph[city_graph.osm_id.isin(nans_g.osm_id)].reset_index(drop=Tr
 good_graph_info = graph_info[((~graph_info.osm_id.isna()) 
                               & (~graph_info.osm_id.isin(tmp_city.osm_id)))].reset_index(drop=True)
 #
+##############
+np_tc = tmp_city.to_numpy()
+ind_geo = list(tmp_city.columns).index('geometry')
+ind_oi = list(tmp_city.columns).index('osm_id')
+
+########
+
+
 lst_uu_geo = []
 newlst=[]
 i=0
-for i in (range(len(tmp_city))):
-# for i in tqdm(range(5)):
-    one_geo = tmp_city.iloc[[i]]
-    tmp_sj = gpd.sjoin(one_geo[['geometry']], city_graph, how='inner', 
-                       op='intersects').drop("index_right", axis=1).reset_index(drop=True)
-    sj_one = city_graph[city_graph.osm_id.isin(tmp_sj.osm_id)].reset_index(drop=True)
-    lst_one_geo = tmp_city.geometry[i].coords[:]
+for i in (range(len(np_tc))):
+    one_geo = gpd.GeoDataFrame(geometry=[np_tc[i,-1]])
+    one_geo.crs = city_graph.crs
+    tmp_sj = intersect_using_spatial_index(city_graph,one_geo)
+#     tmp_sj = gpd.sjoin(one_geo, city_graph, how='inner', 
+#                        op='intersects').drop("index_right", axis=1).reset_index(drop=True)
+    sj_one = list(city_graph[city_graph.osm_id.isin(tmp_sj.osm_id)].geometry)
+    lst_one_geo = np_tc[i][ind_geo].coords[:]
     uniqlines = []
     lst_sj_ends=[]
     j=0
     for j in range(len(sj_one)):
         lst_uu = []
         tmp_lst = []
-        tmp_lst.append(sj_one.geometry[j])
-        lst_sj_one_geo = sj_one.geometry[j].coords[:]
+        tmp_lst.append(sj_one[j])
+        lst_sj_one_geo = sj_one[j].coords[:]
         res = list(set(lst_one_geo) & set(lst_sj_one_geo)) #find mutual points
         if len(res) > 0:
             for k in res:
-                if ((k != tmp_city.geometry[i].coords[0]) & (k != tmp_city.geometry[i].coords[-1])):
-                    if sj_one.geometry[j] not in lst_uu:
-                        lst_uu.append(sj_one.geometry[j])
-                if ((k == sj_one.geometry[j].coords[0]) | (k == sj_one.geometry[j].coords[-1])):
-                    if sj_one.geometry[j] not in lst_sj_ends:
-                        lst_sj_ends.append(sj_one.geometry[j])
+                if ((k != np_tc[i][ind_geo].coords[0]) & (k != np_tc[i][ind_geo].coords[-1])):
+                    if sj_one[j] not in lst_uu:
+                        lst_uu.append(sj_one[j])
+                if ((k == sj_one[j].coords[0]) | (k == sj_one[j].coords[-1])):
+                    if sj_one[j] not in lst_sj_ends:
+                        lst_sj_ends.append(sj_one[j])
         #
         for line in lst_uu:
             if not any(p.equals(line) for p in uniqlines):
                 uniqlines.append(line)
-    if tmp_city.geometry[i] not in uniqlines:
-            uniqlines.append(tmp_city.geometry[i])
+    if np_tc[i][ind_geo] not in uniqlines:
+            uniqlines.append(np_tc[i][ind_geo])
     if len(uniqlines) > 1:
         uu_geo = unary_union(uniqlines)
         one_gdf = gpd.GeoDataFrame(geometry=list(uu_geo))
-        one_gdf.crs='epsg:4326'
+        one_gdf.crs=city_graph.crs
         tmp_one_gdf = gpd.sjoin(one_gdf, city_graph, how='left', 
                                 op='within').drop("index_right", axis=1)
         if len(tmp_one_gdf[tmp_one_gdf.osm_id.isna()]) > 0:
-            line_f = tmp_city.geometry[i]
-            line = tmp_city.geometry[i]
+            line_f = np_tc[i][ind_geo]
+            line = np_tc[i][ind_geo]
             d=0
             cnt=0
             for d in range(len(lst_sj_ends)):
@@ -373,7 +421,7 @@ for i in (range(len(tmp_city))):
                     point = Point(list(set(line_f.coords[:]) & set(lst_sj_ends[d].coords[:]))[0])
                     if (((point.coords[0] != line_f.coords[0]) & (point.coords[0] != line_f.coords[-1])) 
                         & ((point.coords[0] == lst_sj_ends[d].coords[0]) | (point.coords[0] == lst_sj_ends[d].coords[-1]))):
-                        new_geo = shapely.geometry.MultiLineString(list(shapely.ops.split(line,point)))
+                        new_geo = MultiLineString(list(shapely.ops.split(line,point)))
                         line = new_geo
                         cnt+=1
                 except:
@@ -381,15 +429,17 @@ for i in (range(len(tmp_city))):
             if cnt > 0:
                 newlst.append(new_geo)
             else:
-                new_geo = tmp_city.geometry[i]
+                new_geo = np_tc[i][ind_geo]
         else:
-            new_geo = shapely.geometry.MultiLineString(list(tmp_one_gdf[tmp_one_gdf.osm_id 
-                                                                    == tmp_city.osm_id[i]].geometry))
+            new_geo = MultiLineString(list(tmp_one_gdf[tmp_one_gdf.osm_id 
+                                                                    == np_tc[i][ind_oi]].geometry))
     else:
-        new_geo = tmp_city.geometry[i]
+        new_geo = np_tc[i][ind_geo]
     #
     lst_uu_geo.append(new_geo)
 # 
+##############
+#
 try:
     tmp_city['uu_geo'] = lst_uu_geo
 except:
