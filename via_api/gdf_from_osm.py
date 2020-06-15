@@ -145,51 +145,61 @@ lst_columns = ['waterway', 'aerialway', 'barrier', 'man_made']
 for clm in lst_columns:
     if clm not in list(gdf_lines.columns):
         gdf_lines[clm] = None
+#
 
 # при импорте скрипта для чтения с ОСМ - колонка z_order генерится сама
 # без импорта - ниже функция создания этого поля
 def CreateZorderColumn(gdf_lines):
+    np_gdfl = gdf_lines.to_numpy()
+    ind_oi = list(gdf_lines.columns).index('osm_id')
+    ind_hw = list(gdf_lines.columns).index('highway')
+    ind_ot = list(gdf_lines.columns).index('other_tags')
+    
     reg = re.compile('[^0-9-]') # only ints
     dict_z_order = {}
     i=0
-    for i in range(len(gdf_lines)):
-        osmid = gdf_lines.osm_id[i]
+    for i in range(len(np_gdfl)):
+        osmid = np_gdfl[i,ind_oi]
+#         osmid = gdf_lines.osm_id[i]
         dict_z_order[osmid] = 0
-        if gdf_lines.highway[i] in ['minor','road','unclassified','residential']:
+        hw_str = np_gdfl[i,ind_hw]
+        
+        if hw_str in ['minor','road','unclassified','residential']:
             dict_z_order[osmid] = 3
-        elif gdf_lines.highway[i] in ['tertiary_link','tertiary']:
+        elif hw_str in ['tertiary_link','tertiary']:
             dict_z_order[osmid] = 4
-        elif gdf_lines.highway[i] in ['secondary_link','secondary']:
+        elif hw_str in ['secondary_link','secondary']:
             dict_z_order[osmid] = 6
-        elif gdf_lines.highway[i] in ['primary_link','primary']:
+        elif hw_str in ['primary_link','primary']:
             dict_z_order[osmid] = 7
-        elif gdf_lines.highway[i] in ['trunk_link','trunk']:
+        elif hw_str in ['trunk_link','trunk']:
             dict_z_order[osmid] = 8
-        elif gdf_lines.highway[i] in ['motorway_link','motorway']:
+        elif hw_str in ['motorway_link','motorway']:
             dict_z_order[osmid] = 9
         else:
             dict_z_order[osmid] = 0
         #
-        if (('"bridge"=>"yes"' in str(gdf_lines['other_tags'][i]))
+        ot_str = np_gdfl[i,ind_ot]
+        if (('"bridge"=>"yes"' in str(ot_str))
         or
-        ('"bridge"=>"true"' in str(gdf_lines['other_tags'][i]))
+        ('"bridge"=>"true"' in str(ot_str))
         or
-        ('"bridge"=>"1"' in str(gdf_lines['other_tags'][i]))):
+        ('"bridge"=>"1"' in str(ot_str))):
             dict_z_order[osmid] = dict_z_order[osmid] + 10
         #
-        if (('"tunnel"=>"yes"' in str(gdf_lines['other_tags'][i]))
+        if (('"tunnel"=>"yes"' in str(ot_str))
         or
-        ('"tunnel"=>"true"' in str(gdf_lines['other_tags'][i]))
+        ('"tunnel"=>"true"' in str(ot_str))
         or
-        ('"tunnel"=>"1"' in str(gdf_lines['other_tags'][i]))):
+        ('"tunnel"=>"1"' in str(ot_str))):
             dict_z_order[osmid] = dict_z_order[osmid] - 10
         #
-        if ('railway' in str(gdf_lines['other_tags'][i])):
+        if ('railway' in str(ot_str)):
             dict_z_order[osmid] = dict_z_order[osmid] + 5
         #
-        if ('layer' in str(gdf_lines['other_tags'][i])):
+        if ('layer' in str(ot_str)):
 
-            str1 = gdf_lines.other_tags[i]
+            str1 = ot_str
             str2 = str1[str1.find('"layer"=>"') : ].split(",", 1)[0]
             int_layer = int(reg.sub('', str2))
             dict_z_order[osmid] = dict_z_order[osmid] + (10*int_layer)
@@ -209,8 +219,10 @@ def CreateZorderColumn(gdf_lines):
                            'barrier', 'man_made', 'z_order', 'other_tags', 'geometry']].reset_index(drop=True)
     return gdf_lines
 #
-gdf_lines = CreateZorderColumn(gdf_lines)
 
+if 'z_order' not in list(gdf_lines.columns):
+    gdf_lines = CreateZorderColumn(gdf_lines)
+#
 
 ##########################
 # getting polygon geometry
@@ -309,29 +321,33 @@ grp_fr = grp_fr[grp_fr.osm_id < 2]
 gdf_restr = gdf_restr[~gdf_restr.osm_id_restr.isin(grp_fr.osm_id_restr)].reset_index(drop=True)
 
 
+np_gdfr = gdf_restr.to_numpy()
+ind_oir = list(gdf_restr.columns).index('osm_id_restr')
+ind_geo = list(gdf_restr.columns).index('geometry')
 
 lst_via_geo = []
 i=0
-for i in range(1,(len(gdf_restr)-1)):
+for i in range(1,(len(np_gdfr)-1)):
     
-    if gdf_restr.osm_id_restr[i] == gdf_restr.osm_id_restr[i-1]:
+    if np_gdfr[i,ind_oir] == np_gdfr[i-1,ind_oir]:
         elem_1 = i-1
     else:
         elem_1 = i+1
-    if gdf_restr.geometry[i].coords[0] == gdf_restr.geometry[elem_1].coords[0]:
-        p_via = Point(gdf_restr.geometry[i].coords[0])
-    elif gdf_restr.geometry[i].coords[-1] == gdf_restr.geometry[elem_1].coords[-1]:
-        p_via = Point(gdf_restr.geometry[i].coords[-1])
-    elif gdf_restr.geometry[i].coords[-1] == gdf_restr.geometry[elem_1].coords[0]:
-        p_via = Point(gdf_restr.geometry[i].coords[-1])
-    elif gdf_restr.geometry[i].coords[0] == gdf_restr.geometry[elem_1].coords[-1]:
-        p_via = Point(gdf_restr.geometry[i].coords[0])
+    if np_gdfr[i,ind_geo].coords[0] == np_gdfr[elem_1,ind_geo].coords[0]:
+        p_via = Point(np_gdfr[i,ind_geo].coords[0])
+    elif np_gdfr[i,ind_geo].coords[-1] == np_gdfr[elem_1,ind_geo].coords[-1]:
+        p_via = Point(np_gdfr[i,ind_geo].coords[-1])
+    elif np_gdfr[i,ind_geo].coords[-1] == np_gdfr[elem_1,ind_geo].coords[0]:
+        p_via = Point(np_gdfr[i,ind_geo].coords[-1])
+    elif np_gdfr[i,ind_geo].coords[0] == np_gdfr[elem_1,ind_geo].coords[-1]:
+        p_via = Point(np_gdfr[i,ind_geo].coords[0])
     else:
         p_via = "Error"
     lst_via_geo.append(p_via)
 # 
 lst_via_geo.append(lst_via_geo[-1])
 lst_via_geo.insert(0, lst_via_geo[0])
+
 
 # tmp_copy = gdf_restr.copy()
 gdf_restr['p_via'] = lst_via_geo
