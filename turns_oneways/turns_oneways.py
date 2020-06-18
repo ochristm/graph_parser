@@ -1,12 +1,7 @@
 print("Running...")
-import pandas as pd
-import numpy as np
-from datetime import datetime
-import geopandas as gpd
-import shapely
 
 import os
-from tqdm.notebook import tqdm
+#from tqdm.notebook import tqdm
 
 # # В случе ошибки RuntimeError: b'no arguments in initialization list'
 # # Если действие выше не помогло, то нужно задать системной переменной PROJ_LIB
@@ -23,7 +18,12 @@ os.environ ['GDAL_DATA']=path_gdal
 
 # os.environ ['PROJ_LIB']=r'C:\Users\popova_kv\AppData\Local\Continuum\anaconda3\Library\share'
 # os.environ ['GDAL_DATA']=r'C:\Users\popova_kv\AppData\Local\Continuum\anaconda3\Library\share\gdal'
-    
+
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import geopandas as gpd
+import shapely
 #отключить предупреждения pandas (так быстрее считает!!!):
 pd.options.mode.chained_assignment = None
 
@@ -35,7 +35,6 @@ from shapely.ops import unary_union
 import networkx as nx
 import momepy
 import re
-import math
 
 import math
 from math import degrees, acos
@@ -47,8 +46,8 @@ from math import degrees, acos
 filename = ''
 
 while (os.path.isfile(filename) != True):
-    print("Введите путь и название файла OSM, пример:")
-    print(".\\data\\20200430_2004\\raw\\osm\\map_2_Yaroslavl,Russia_20200430_2004.osm")
+    print("Введите путь и название нового графа, пример:")
+    print(".\\data\\1701435\\20200608_1650\\res\\new_graph_2_Ярославль_20200608_1650.shp")
     filename = input()
     filename = '.\data' + filename.split(".\data")[1]
     if os.path.isfile(filename) == False:
@@ -57,12 +56,22 @@ while (os.path.isfile(filename) != True):
         # print("Файл найден")
 # 
 
-
-list_split = filename[:-4].rsplit("_")
-str_date = list_split[-2] + "_" + list_split[-1]
-place = list_split[-3]
-buff_km = list_split[-4]
-poly_osmid = filename.split("data\\")[1].split("\\")[0]
+try:
+	list_split = filename[:-4].rsplit("_")
+	str_date = list_split[-2] + "_" + list_split[-1]
+	place = list_split[-3]
+	buff_km = list_split[-4]
+	poly_osmid = filename.split("data\\")[1].split("\\")[0]
+except:
+	print("Enter place name:")
+	place = input()
+	if len(place) == 0:
+		place = 'city'
+	str_date = "{:%Y%m%d_%H%M}".format(datetime.now())
+	buff_km = 0
+	poly_osmid = len(filename)
+	print("place_id:",poly_osmid)
+#
 
 ###########################
 #path_new = os.getcwd()
@@ -87,24 +96,45 @@ path_tuon = path_res #path_data + '\\turn_onew'
     # print ("Не удалось создать директорию: %s \n" % path_tuon)
     # print("Возможно, она уже создана")
 # #
-print("Please wait...")
+
+time_start = "{:%H:%M:%S}".format(datetime.now())
+print("time start:", time_start)
+
 
 ###########################
 
 new_graph = gpd.read_file(r'{}\\new_graph_{}_{}_{}.shp'.format(path_res_edges,buff_km, place, str_date), encoding = 'utf-8')
 all_nodes = gpd.read_file(r'{}\\nodes_{}_{}_{}.shp'.format(path_res_nodes,buff_km, place, str_date), encoding = 'utf-8')
 
-gdf_other_lines = gpd.read_file(r'{}\\other_lines_{}_{}_{}.shp'.format(path_raw_shp_layers,buff_km, place, str_date), encoding = 'utf-8')
-
-gdf_other_points = gpd.read_file(r'{}\\other_points_{}_{}_{}.shp'.format(path_raw_shp_layers,buff_km, place, str_date), encoding = 'utf-8')
-
+try:
+    gdf_other_lines = gpd.read_file(r'{}\\other_lines_{}_{}_{}.shp'.format(path_raw_shp_layers,buff_km, place, str_date), encoding = 'utf-8')
+    gdf_other_points = gpd.read_file(r'{}\\other_points_{}_{}_{}.shp'.format(path_raw_shp_layers,buff_km, place, str_date), encoding = 'utf-8')
+except:
+    lst_poi_col = ['osm_id_res','restr_type','role','osm_id','geo_type','geo_line','geometry']
+    lst_ln_col = ['osm_id_res','restr_type','role','osm_id','geo_type','p_via','geometry']
+    gdf_other_lines = gpd.GeoDataFrame(columns=lst_poi_col,data=None)
+    gdf_other_points = gpd.GeoDataFrame(columns=lst_ln_col,data=None)
+#
 #Specify dtype to eliminate this error
 #DtypeWarning: Columns (4) have mixed types.Specify dtype option on import or set low_memory=False.
 dtype={'osm_id':np.int64, 'name':str, 'highway':str, 'waterway':str, 
        'aerialway':str, 'barrier':str,'man_made':str, 'z_order':np.int64, 'other_tags':str}
 csv_ot = pd.read_csv(r'{}\\csv_{}_{}_{}.csv'.format(path_raw_csv,buff_km, place, str_date), dtype=dtype, encoding = 'utf-8', sep=';')
 
+######
+len_elem = len(new_graph)
+time_min = int((len_elem / 210) / 60) 
+time_max = int((len_elem / 88) / 60) 
+print("Estimated time: {} to {} minutes".format(time_min,time_max))
+print("Please wait...")
+
+##########################
+
+
 all_nodes = all_nodes[['NO', 'geometry']]
+all_nodes = all_nodes.rename(columns={'NO':'nodeID'})
+all_nodes_copy = all_nodes.copy()
+all_nodes_copy['str_geo'] = all_nodes_copy['geometry'].astype(str)
 
 #####################
 # lst_tss = []
@@ -144,106 +174,111 @@ for i in (range(len(new_tags))):
 
 
 ###############other_rel
+def oneRestr(gdf_other_lines, gdf_other_points):
 
-gdf_other_lines = gdf_other_lines.rename(columns={'osm_id':'osm_id_graph',
-                                                  'osm_id_res':'osm_id', 'restr_type':'other_tags'})
-gdf_other_points = gdf_other_points.rename(columns={'osm_id':'osm_id_graph',
-                                                    'osm_id_res':'osm_id', 'restr_type':'other_tags'})
-new_o_lines = gdf_other_lines.copy()
+    gdf_other_lines = gdf_other_lines.rename(columns={'osm_id':'osm_id_graph',
+                                                      'osm_id_res':'osm_id', 'restr_type':'other_tags'})
+    gdf_other_points = gdf_other_points.rename(columns={'osm_id':'osm_id_graph',
+                                                        'osm_id_res':'osm_id', 'restr_type':'other_tags'})
+    new_o_lines = gdf_other_lines.copy()
 
-olines_first = new_o_lines[((new_o_lines.role == 'from') | (new_o_lines.role == '1from'))].reset_index(drop=True)
-olines_last = new_o_lines[((new_o_lines.role == 'to') | (new_o_lines.role == '1to'))].reset_index(drop=True)
+    olines_first = new_o_lines[((new_o_lines.role == 'from') | (new_o_lines.role == '1from'))].reset_index(drop=True)
+    olines_last = new_o_lines[((new_o_lines.role == 'to') | (new_o_lines.role == '1to'))].reset_index(drop=True)
 
-restr_points = gdf_other_points[['osm_id', 'other_tags', 'geometry']].copy()
-restr_points = restr_points.rename(columns={'geometry':'p_via'})
+    restr_points = gdf_other_points[['osm_id', 'other_tags', 'geometry']].copy()
+    restr_points = restr_points.rename(columns={'geometry':'p_via'})
 
-restr_points = restr_points.merge(olines_first[['osm_id', 
-                                                   'geometry']], how='left', on=['osm_id'])
-restr_points = restr_points.rename(columns={'geometry':'one_geometry'})
+    restr_points = restr_points.merge(olines_first[['osm_id', 
+                                                       'geometry']], how='left', on=['osm_id'])
+    restr_points = restr_points.rename(columns={'geometry':'one_geometry'})
 
 
-restr_points = restr_points.merge(olines_last[['osm_id', 
-                                                   'geometry']], how='left', on=['osm_id'])
-restr_points = restr_points.rename(columns={'geometry':'two_geometry'})
+    restr_points = restr_points.merge(olines_last[['osm_id', 
+                                                       'geometry']], how='left', on=['osm_id'])
+    restr_points = restr_points.rename(columns={'geometry':'two_geometry'})
 
-lst_nan_restr = list(restr_points[restr_points.two_geometry.isna() | restr_points.one_geometry.isna()].osm_id.unique())
-restr_points = restr_points[~restr_points.osm_id.isin(lst_nan_restr)].reset_index(drop=True)
+    lst_nan_restr = list(restr_points[restr_points.two_geometry.isna() | restr_points.one_geometry.isna()].osm_id.unique())
+    restr_points = restr_points[~restr_points.osm_id.isin(lst_nan_restr)].reset_index(drop=True)
 
-def create_points(find_point):
-    list_p_from = []
-    list_p_to = []
-    i=0
-    for i in range(len(find_point)):
-        if find_point.one_geometry[i].coords[0] == find_point.p_via[i].coords[0]:
-            list_p_from.append(Point(find_point.one_geometry[i].coords[-1]))
-        else:
-            list_p_from.append(Point(find_point.one_geometry[i].coords[0]))
+    def create_points(find_point):
+        list_p_from = []
+        list_p_to = []
+        i=0
+        for i in range(len(find_point)):
+            if find_point.one_geometry[i].coords[0] == find_point.p_via[i].coords[0]:
+                list_p_from.append(Point(find_point.one_geometry[i].coords[-1]))
+            else:
+                list_p_from.append(Point(find_point.one_geometry[i].coords[0]))
+        # 
+        i=0
+        for i in range(len(find_point)):
+            if find_point.two_geometry[i].coords[0] == find_point.p_via[i].coords[0]:
+                list_p_to.append(Point(find_point.two_geometry[i].coords[-1]))
+            else:
+                list_p_to.append(Point(find_point.two_geometry[i].coords[0]))
+        # 
+        try:
+            find_point['p_from'] = list_p_from
+            find_point['p_to'] = list_p_to
+        except:
+            print("Error!")
+        return find_point
     # 
-    i=0
-    for i in range(len(find_point)):
-        if find_point.two_geometry[i].coords[0] == find_point.p_via[i].coords[0]:
-            list_p_to.append(Point(find_point.two_geometry[i].coords[-1]))
-        else:
-            list_p_to.append(Point(find_point.two_geometry[i].coords[0]))
-    # 
-    try:
-        find_point['p_from'] = list_p_from
-        find_point['p_to'] = list_p_to
-    except:
-        print("Error!")
-    return find_point
-# 
 
-find_point = restr_points.copy()
-find_point = create_points(find_point)
+    find_point = restr_points.copy()
+    find_point = create_points(find_point)
 
-all_nodes = all_nodes.rename(columns={'NO':'nodeID'})
-all_nodes_copy = all_nodes.copy()
-all_nodes_copy['str_geo'] = all_nodes_copy['geometry'].astype(str)
-
-def PointBuffNode(gdf, column):
-    gdf_copy = gdf.copy()
-    gdf_copy['geometry'] = gdf_copy[column]
-    gdf_w_buff = gpd.GeoDataFrame(gdf_copy)
-
-    gdf_w_buff.crs='epsg:4326' 
-    gdf_w_buff = gdf_w_buff.to_crs('epsg:32637')
-    gdf_w_buff.geometry = gdf_w_buff.geometry.buffer(0.5)
-    gdf_w_buff = gdf_w_buff.to_crs('epsg:4326')
-    new_name = "buff_" + column
-    gdf_w_buff[new_name] = gdf_w_buff.geometry
     
-    inter_gdf_new = gpd.sjoin(gdf_w_buff, all_nodes, how='inner', 
-                              op='intersects').drop("index_right", axis=1).reset_index(drop=True)
-    node_name = "node_" + column
-    inter_gdf_new[node_name] = inter_gdf_new['nodeID']
-    del inter_gdf_new['geometry'], inter_gdf_new['nodeID'], inter_gdf_new[new_name]
-    return inter_gdf_new
-#
-find_point = find_point[['osm_id', 'other_tags', 'p_from', 'p_via', 
-                               'p_to']]
-gdf_new = PointBuffNode(find_point, 'p_from')
-gdf_new = PointBuffNode(gdf_new, 'p_via')
-gdf_new = PointBuffNode(gdf_new, 'p_to')
-gdf_new = gdf_new.rename(columns={'node_p_from':'node_from', 'node_p_to':'node_to', 
-                                  'node_p_via':'node_via'})
-found_geo_points = gdf_new.copy()
 
-first_find = found_geo_points[
-    (~(found_geo_points.node_from.isna())
-    & ~(found_geo_points.node_via.isna())
-    & ~(found_geo_points.node_to.isna()))].reset_index(drop=True)
-first_find['node_from'] = first_find['node_from'].astype(np.int64)
-first_find['node_via'] = first_find['node_via'].astype(np.int64)
-first_find['node_to'] = first_find['node_to'].astype(np.int64)
+    def PointBuffNode(gdf, column):
+        gdf_copy = gdf.copy()
+        gdf_copy['geometry'] = gdf_copy[column]
+        gdf_w_buff = gpd.GeoDataFrame(gdf_copy)
+
+        gdf_w_buff.crs='epsg:4326' 
+        gdf_w_buff = gdf_w_buff.to_crs('epsg:32637')
+        gdf_w_buff.geometry = gdf_w_buff.geometry.buffer(0.5)
+        gdf_w_buff = gdf_w_buff.to_crs('epsg:4326')
+        new_name = "buff_" + column
+        gdf_w_buff[new_name] = gdf_w_buff.geometry
+        
+        inter_gdf_new = gpd.sjoin(gdf_w_buff, all_nodes, how='inner', 
+                                  op='intersects').drop("index_right", axis=1).reset_index(drop=True)
+        node_name = "node_" + column
+        inter_gdf_new[node_name] = inter_gdf_new['nodeID']
+        del inter_gdf_new['geometry'], inter_gdf_new['nodeID'], inter_gdf_new[new_name]
+        return inter_gdf_new
+    #
+    find_point = find_point[['osm_id', 'other_tags', 'p_from', 'p_via', 
+                                   'p_to']]
+    gdf_new = PointBuffNode(find_point, 'p_from')
+    gdf_new = PointBuffNode(gdf_new, 'p_via')
+    gdf_new = PointBuffNode(gdf_new, 'p_to')
+    gdf_new = gdf_new.rename(columns={'node_p_from':'node_from', 'node_p_to':'node_to', 
+                                      'node_p_via':'node_via'})
+    found_geo_points = gdf_new.copy()
+
+    first_find = found_geo_points[
+        (~(found_geo_points.node_from.isna())
+        & ~(found_geo_points.node_via.isna())
+        & ~(found_geo_points.node_to.isna()))].reset_index(drop=True)
+    first_find['node_from'] = first_find['node_from'].astype(np.int64)
+    first_find['node_via'] = first_find['node_via'].astype(np.int64)
+    first_find['node_to'] = first_find['node_to'].astype(np.int64)
 
 
-nodes_restr = first_find[['osm_id', 'other_tags', 'node_from', 'node_via', 'node_to']].copy()
-nodes_restr = nodes_restr.drop_duplicates(nodes_restr.columns).reset_index(drop=True)
+    nodes_restr = first_find[['osm_id', 'other_tags', 'node_from', 'node_via', 'node_to']].copy()
+    nodes_restr = nodes_restr.drop_duplicates(nodes_restr.columns).reset_index(drop=True)
+    
+    return nodes_restr
 
 ############# END of Checking restrictions #############
 
-
+try:
+    nodes_restr = oneRestr(gdf_other_lines,gdf_other_points)
+except:
+    lst_nr = ['osm_id', 'other_tags', 'node_from', 'node_via', 'node_to']
+    nodes_restr = gpd.GeoDataFrame(columns=lst_nr, data=None)
 
 ############# Find neighbours of graph #########
 
@@ -376,36 +411,59 @@ df_from_via_to = df_from_via_to.reset_index(drop=True)
 
 # exceptions in restrictions, means those types of transport can drive that way
 # will be prosessed later
-nr_copy = nodes_restr.copy()
-nr_copy['from_via'] = nr_copy['node_from'].astype(str) + "_" \
-+ nr_copy['node_via'].astype(str) + "_"
-nr_copy['from_via_to'] = nr_copy['node_from'].astype(str) + "_" \
-+ nr_copy['node_via'].astype(str) + "_" + nr_copy['node_to'].astype(str)
 
-# type_no - should be deleted exactly those paths
-restr_type_no = nr_copy[nr_copy.other_tags.str.contains("no_",
-                                                        na=False)].reset_index(drop=True)
-# type_only - should be deleted other than those paths with same (node_from - node_via)
-restr_type_only = nr_copy[nr_copy.other_tags.str.contains("only",
-                                                          na=False)].reset_index(drop=True)
 #
-list_dlt_only = []
-i=0
-for i in (range(len(restr_type_only))):
-    good_fvt = restr_type_only.from_via_to[i]
-    fv_group = restr_type_only.from_via[i]
-    list_all = list(df_from_via_to[df_from_via_to.from_via_to.str.contains(fv_group, 
-                                                                           na=False)].from_via_to)
-    list_dlt = list_all[:]
-    try:
-        list_dlt.remove(good_fvt)
-        if len(list_dlt) > 0:
-            list_dlt_only.append(list_dlt)
-    except:
-        pass
-# 
-# создание объединенного (одного) списка из списка списков
-dlt_only = sum(list_dlt_only, [])
+
+
+
+####################################################################################
+
+
+
+#
+def twoRestr(nodes_restr):
+    nr_copy = nodes_restr.copy()
+    nr_copy['from_via'] = nr_copy['node_from'].astype(str) + "_" \
+    + nr_copy['node_via'].astype(str) + "_"
+    nr_copy['from_via_to'] = nr_copy['node_from'].astype(str) + "_" \
+    + nr_copy['node_via'].astype(str) + "_" + nr_copy['node_to'].astype(str)
+
+    # type_no - should be deleted exactly those paths
+    restr_type_no = nr_copy[nr_copy.other_tags.str.contains("no_",
+                                                            na=False)].reset_index(drop=True)
+    # type_only - should be deleted other than those paths with same (node_from - node_via)
+    restr_type_only = nr_copy[nr_copy.other_tags.str.contains("only",
+                                                              na=False)].reset_index(drop=True)
+    #
+    list_dlt_only = []
+    i=0
+    for i in (range(len(restr_type_only))):
+        good_fvt = restr_type_only.from_via_to[i]
+        fv_group = restr_type_only.from_via[i]
+        list_all = list(df_from_via_to[df_from_via_to.from_via_to.str.contains(fv_group, 
+                                                                               na=False)].from_via_to)
+        list_dlt = list_all[:]
+        try:
+            list_dlt.remove(good_fvt)
+            if len(list_dlt) > 0:
+                list_dlt_only.append(list_dlt)
+        except:
+            pass
+    # 
+    # создание объединенного (одного) списка из списка списков
+    dlt_only = sum(list_dlt_only, [])
+    
+    return dlt_only,nr_copy,restr_type_no,restr_type_only
+#
+
+try:
+    dlt_only,nr_copy,restr_type_no,restr_type_only = twoRestr(nodes_restr)
+except:
+    dlt_only = []
+    lst_nr = ['osm_id', 'other_tags', 'node_from', 'node_via', 'node_to']
+    nr_copy = gpd.GeoDataFrame(columns=lst_nr, data=None)
+    restr_type_no = gpd.GeoDataFrame(columns=lst_nr, data=None)
+    restr_type_only = gpd.GeoDataFrame(columns=lst_nr, data=None)
 
 # exceptions
 # исключения. это значит, что запрет действует для всех видов транспорта, кроме указанного в except
@@ -455,7 +513,7 @@ nodes = all_nodes.copy()
 my_turns = all_fvt.copy()
 
 ############################
-
+    
 
 
 #Find type of the turn
@@ -693,11 +751,18 @@ zero_car = zero_car[['FROMNODENO', 'VIANODENO', 'TONODENO', 'TSYSSET', 'TYPENO',
 zero_car_2 = df_from_via_to[((df_from_via_to.from_via_to.isin(dlt_only)) 
                 & (df_from_via_to.TSYSSET_1 == df_from_via_to.TSYSSET_2))].reset_index(drop=True)
 #
-zero_car_2 = zero_car_2.merge(nodes_restr[['osm_id', 'other_tags', 'node_from', 'node_via']], 
-                              how='left', on=['node_from', 'node_via'])
-zero_car_2 = zero_car_2[~zero_car_2.osm_id.isna()]
+try:
+    zero_car_2 = zero_car_2.merge(nodes_restr[['osm_id', 'other_tags', 'node_from', 'node_via']], 
+                                  how='left', on=['node_from', 'node_via'])
+    #
+    zero_car_2 = zero_car_2[~zero_car_2.osm_id.isna()]
 
-zero_car_2 = zero_car_2[zero_car_2.other_tags.str.contains("only_", na=False)]
+    zero_car_2 = zero_car_2[zero_car_2.other_tags.str.contains("only_", na=False)]
+    #
+except:
+    zero_car_2['osm_id'],zero_car_2['other_tags'],zero_car_2['node_from'],zero_car_2['node_via'] = None,None,None,None
+    pass
+#
 
 zero_car_2 = zero_car_2.rename(columns={'node_from':'FROMNODENO',
                                     'node_via':'VIANODENO', 'node_to':'TONODENO', 
@@ -713,14 +778,21 @@ all_zero_car = all_zero_car.drop_duplicates(all_zero_car.columns)
 
 #
 
-except_restr = nr_copy[nr_copy.other_tags.str.contains("except",
-                                                       na=False)].reset_index(drop=True)
-except_psv = except_restr[except_restr.other_tags.str.contains("psv", na=False)].reset_index(drop=True)
-except_psv['TSYSSET'] = 'BUS,TB,MT'
+try:
+    except_restr = nr_copy[nr_copy.other_tags.str.contains("except",
+                                                           na=False)].reset_index(drop=True)
+    except_psv = except_restr[except_restr.other_tags.str.contains("psv", na=False)].reset_index(drop=True)
+    except_psv['TSYSSET'] = 'BUS,TB,MT'
 
-except_psv = except_psv.rename(columns={'node_from':'FROMNODENO',
-                                    'node_via':'VIANODENO', 'node_to':'TONODENO', 
-                                    'osm_id':'OSM_RELATION_ID'})
+    except_psv = except_psv.rename(columns={'node_from':'FROMNODENO',
+                                        'node_via':'VIANODENO', 'node_to':'TONODENO', 
+                                        'osm_id':'OSM_RELATION_ID'})
+    #
+except:
+    lst_nr = ['osm_id', 'other_tags', 'node_from', 'node_via', 'node_to']
+    except_psv = gpd.GeoDataFrame(columns=lst_nr, data=None)
+#
+
 # 
 lst_type_psv = []
 i=0
@@ -753,7 +825,13 @@ no_osm['OSM_RELATION_ID'] = None
 del no_osm['from_via_to']
 
 tmp_restr = tmp_copy[tmp_copy.from_via_to.isin(nr_copy.from_via_to)].reset_index(drop=True)
-tmp_restr = tmp_restr.merge(nr_copy[['osm_id', 'other_tags', 'from_via_to']])
+
+try:
+    tmp_restr = tmp_restr.merge(nr_copy[['osm_id', 
+                                         'other_tags', 'from_via_to']], on=['from_via_to'])
+except:
+    tmp_restr['osm_id'],tmp_restr['other_tags'],tmp_restr['from_via_to'] = None,None,None
+#
 
 lst_restr_type = []
 i=0
@@ -786,6 +864,9 @@ final_fvt = final_fvt.drop_duplicates(final_fvt.columns).reset_index(drop=True)
 ####################################
 
 final_fvt.to_csv("{}\\final_fvt_{}_{}_{}.csv".format(path_tuon, buff_km, place, str_date), sep=";", encoding="utf-8", index=False)
+
+time_end = "{:%H:%M:%S}".format(datetime.now())
+print("time end:", time_end)
 print("Results are in folder 'res'")
 print("Done")
 
