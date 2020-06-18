@@ -107,15 +107,28 @@ def GirsGdf(lr_nm):
     del new_df
     return new_gdf
 #
+
 try:
     gdf_lines = GirsGdf(1)
+except:
+    pass
+#
+try:
     gdf_points = GirsGdf(0)
+except:
+    pass
+try:
     gdf_multilines = GirsGdf(2)
+except:
+    pass
+try:
     gdf_multipolygons = GirsGdf(3)
-except(RuntimeError):
-    print("RuntimeError, data is too big")
-    exit()
+except:
+    pass
+#
+
 #gdf_other = GirsGdf(4)
+lrs = None
 del lrs
 
 #extract polygon of the city from all polygons
@@ -259,107 +272,69 @@ gdf_lines = CreateZorderColumn(gdf_lines)
 ######################
 final_df_restr = parse_osm.final_df_restr
 ######################
+def CreateRestr(final_df_restr,gdf_lines):
+    gdf_restr = final_df_restr.merge(gdf_lines[['osm_id','geometry']], how='left', on=['osm_id'])
+    gdf_restr = gpd.GeoDataFrame(gdf_restr,geometry='geometry')
+    gdf_restr.crs='epsg:4326'
+    gdf_restr = gdf_restr[~gdf_restr.geometry.isna()].reset_index(drop=True)
 
-gdf_restr = final_df_restr.merge(gdf_lines[['osm_id','geometry']], how='left', on=['osm_id'])
-gdf_restr = gpd.GeoDataFrame(gdf_restr,geometry='geometry')
-gdf_restr.crs='epsg:4326'
-gdf_restr = gdf_restr[~gdf_restr.geometry.isna()].reset_index(drop=True)
+    grp_fr = gdf_restr.groupby('osm_id_restr').count()['osm_id']
+    grp_fr = grp_fr.reset_index()
+    # if one - others arent in graph, should delete
+    grp_fr = grp_fr[grp_fr.osm_id < 2]
 
-grp_fr = gdf_restr.groupby('osm_id_restr').count()['osm_id']
-grp_fr = grp_fr.reset_index()
-# if one - others arent in graph, should delete
-grp_fr = grp_fr[grp_fr.osm_id < 2]
-
-gdf_restr = gdf_restr[~gdf_restr.osm_id_restr.isin(grp_fr.osm_id_restr)].reset_index(drop=True)
+    gdf_restr = gdf_restr[~gdf_restr.osm_id_restr.isin(grp_fr.osm_id_restr)].reset_index(drop=True)
 
 
 
-lst_via_geo = []
-i=0
-for i in range(1,(len(gdf_restr)-1)):
+    lst_via_geo = []
+    i=0
+    for i in range(1,(len(gdf_restr)-1)):
+        
+        if gdf_restr.osm_id_restr[i] == gdf_restr.osm_id_restr[i-1]:
+            elem_1 = i-1
+        else:
+            elem_1 = i+1
+        if gdf_restr.geometry[i].coords[0] == gdf_restr.geometry[elem_1].coords[0]:
+            p_via = Point(gdf_restr.geometry[i].coords[0])
+        elif gdf_restr.geometry[i].coords[-1] == gdf_restr.geometry[elem_1].coords[-1]:
+            p_via = Point(gdf_restr.geometry[i].coords[-1])
+        elif gdf_restr.geometry[i].coords[-1] == gdf_restr.geometry[elem_1].coords[0]:
+            p_via = Point(gdf_restr.geometry[i].coords[-1])
+        elif gdf_restr.geometry[i].coords[0] == gdf_restr.geometry[elem_1].coords[-1]:
+            p_via = Point(gdf_restr.geometry[i].coords[0])
+        else:
+            p_via = "Error"
+        lst_via_geo.append(p_via)
+    # 
+    lst_via_geo.append(lst_via_geo[-1])
+    lst_via_geo.insert(0, lst_via_geo[0])
+
+    # tmp_copy = gdf_restr.copy()
+    gdf_restr['p_via'] = lst_via_geo
+    lst_error = list(gdf_restr[(gdf_restr.p_via == "Error")].osm_id_restr.unique())
+    gdf_restr = gdf_restr[~gdf_restr.osm_id_restr.isin(lst_error)].reset_index(drop=True)
+    other_lines = gdf_restr.copy()
+    other_lines.crs='epsg:4326'
+    other_lines['p_via'] = other_lines['p_via'].astype(str)
+
+    other_points = gdf_restr.copy()
+    other_points.crs='epsg:4326'
+    other_points = other_points.rename(columns={'geometry':'geo_line','p_via':'geometry'})
+    other_points['geo_line'] = other_points['geo_line'].astype(str)
     
-    if gdf_restr.osm_id_restr[i] == gdf_restr.osm_id_restr[i-1]:
-        elem_1 = i-1
-    else:
-        elem_1 = i+1
-    if gdf_restr.geometry[i].coords[0] == gdf_restr.geometry[elem_1].coords[0]:
-        p_via = Point(gdf_restr.geometry[i].coords[0])
-    elif gdf_restr.geometry[i].coords[-1] == gdf_restr.geometry[elem_1].coords[-1]:
-        p_via = Point(gdf_restr.geometry[i].coords[-1])
-    elif gdf_restr.geometry[i].coords[-1] == gdf_restr.geometry[elem_1].coords[0]:
-        p_via = Point(gdf_restr.geometry[i].coords[-1])
-    elif gdf_restr.geometry[i].coords[0] == gdf_restr.geometry[elem_1].coords[-1]:
-        p_via = Point(gdf_restr.geometry[i].coords[0])
-    else:
-        p_via = "Error"
-    lst_via_geo.append(p_via)
-# 
-lst_via_geo.append(lst_via_geo[-1])
-lst_via_geo.insert(0, lst_via_geo[0])
+    return other_points,other_lines
 
-# tmp_copy = gdf_restr.copy()
-gdf_restr['p_via'] = lst_via_geo
-lst_error = list(gdf_restr[(gdf_restr.p_via == "Error")].osm_id_restr.unique())
-gdf_restr = gdf_restr[~gdf_restr.osm_id_restr.isin(lst_error)].reset_index(drop=True)
-other_lines = gdf_restr.copy()
-other_lines.crs='epsg:4326'
-other_lines['p_via'] = other_lines['p_via'].astype(str)
-
-other_points = gdf_restr.copy()
-other_points.crs='epsg:4326'
-other_points = other_points.rename(columns={'geometry':'geo_line','p_via':'geometry'})
-other_points['geo_line'] = other_points['geo_line'].astype(str)
-
-# def SepGeomOther (new_gdf):
-    # one_osmid = []
-    # one_geo = []
-    # i=0
-    # j=0
-    # for i in range(len(new_gdf)):
-        # for j in range(len(new_gdf.geometry[i])):
-            # one_geo.append(new_gdf.geometry[i][j]) # разбиение коллекции
-            # one_osmid.append(new_gdf.osm_id[i])
-    # # 
-    # all_sep_geo = gpd.GeoDataFrame(columns=['osm_id'], data=one_osmid, geometry=one_geo)
-    # all_sep_geo = all_sep_geo.merge(new_gdf[['osm_id', 'name', 'type', 'other_tags']], on=['osm_id'], how='left')
-    
-    # points = gpd.GeoDataFrame()
-    # lines = gpd.GeoDataFrame()
-    # others = gpd.GeoDataFrame()
-    # i=0
-    # for i in range(len(all_sep_geo)):
-        # if (isinstance(shapely.geometry.linestring.LineString(), type(all_sep_geo.geometry[i]))):
-            # lines = lines.append(all_sep_geo[i:i+1])
-        # # 
-        # elif (isinstance(shapely.geometry.point.Point(), type(all_sep_geo.geometry[i]))):
-            # points = points.append(all_sep_geo[i:i+1])
-        # # 
-        # else:
-            # others = others.append(all_sep_geo[i:i+1])
-    # # 
-    # lines = lines.reset_index(drop=True)
-    # points = points.reset_index(drop=True)
-    # others = others.reset_index(drop=True)
-    
-    # return lines, points, others
-# #
-
-# gdf_other_turn = gdf_other[gdf_other['type'] == 'restriction'].copy().reset_index(drop=True)
-# other_lines, other_points, other_others = SepGeomOther(gdf_other_turn)
-
-###############################
-# saving shp
-
-# print("Do you want to save gdfs to shps?y/n")
-# answ_save = input()
-# if answ_save == 'y':
-
-other_lines.to_file('{}\\other_lines_{}_{}_{}.shp'.format(path_raw_shp_layers,buff_km, place, str_date), encoding='utf-8')
-other_points.to_file('{}\\other_points_{}_{}_{}.shp'.format(path_raw_shp_layers,buff_km, place, str_date), encoding='utf-8')
-# if len(other_others) > 0:
-    # other_others.to_file('./data/raw/shp/layers/other_others_{}_{}_{}.shp'.format(buff_km, place, str_date), encoding='utf-8')
 #
 
+try:
+    other_points, other_lines = CreateRestr(final_df_restr,gdf_lines)
+    other_lines.to_file('{}\\other_lines_{}_{}_{}.shp'.format(path_raw_shp_layers,buff_km, place, str_date), encoding='utf-8')
+    other_points.to_file('{}\\other_points_{}_{}_{}.shp'.format(path_raw_shp_layers,buff_km, place, str_date), encoding='utf-8')
+except:
+    pass
+
+#
 gdf_lines[['osm_id', 'name', 'highway', 'waterway', 'aerialway',
            'barrier', 'man_made', 'z_order', 
            'other_tags']].to_csv("{}\\csv_{}_{}_{}.csv".format(path_raw_csv,buff_km, place, str_date), sep=";", encoding="utf-8-sig", index=False)
@@ -375,10 +350,14 @@ i=0
 for i in range(len(gdf_lines_shp)):
     if len(str(gdf_lines_shp.other_tags[i])) > 254:
         gdf_lines_shp.other_tags[i] = gdf_lines_shp.other_tags[i][:254]
-
+#
+try:
+    gdf_multilines.to_file("{}\\gdf_multilines_{}_{}_{}.shp".format(path_raw_shp_layers,buff_km, place, str_date), encoding="utf-8")
+except:
+    pass
+#
 gdf_lines_shp.to_file("{}\\gdf_lines_{}_{}_{}.shp".format(path_raw_shp_layers,buff_km, place, str_date), encoding="utf-8")
 gdf_points.to_file("{}\\gdf_points_{}_{}_{}.shp".format(path_raw_shp_layers,buff_km, place, str_date), encoding="utf-8")
-gdf_multilines.to_file("{}\\gdf_multilines_{}_{}_{}.shp".format(path_raw_shp_layers,buff_km, place, str_date), encoding="utf-8")
 gdf_multipolygons.to_file("{}\\gdf_multipolygons_{}_{}_{}.shp".format(path_raw_shp_layers,buff_km, place, str_date), encoding="utf-8")
 try:
     gdf_poly.to_file('{}\\poly_{}_{}_{}.shp'.format(path_raw_shp_poly,buff_km, place, str_date), encoding='utf-8')

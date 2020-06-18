@@ -14,27 +14,7 @@ print("Part  1. Parse data from OSM.")
 print("Please wait...")
 print()
 
-import networkx as nx
-import osmnx as ox
-import pandas as pd
-import geopandas as gpd
-import shapely
-
-import wget
-import gdal, ogr
 import os
-import momepy
-from datetime import datetime
-import re
-import girs
-from girs.feat.layers import LayersReader
-import overpass
-from pyproj import Proj, transform
-
-# # В случе ошибки RuntimeError: b'no arguments in initialization list'
-# # Если действие выше не помогло, то нужно задать системной переменной PROJ_LIB
-# # явный путь к окружению по аналогии ниже
-# Для настройки проекции координат, поменять на свой вариант
 import conda
 conda_file_dir = conda.__file__
 conda_dir = conda_file_dir.split('lib')[0]
@@ -44,8 +24,31 @@ path_gdal = os.path.join(proj_lib, 'gdal')
 os.environ ['PROJ_LIB']=proj_lib
 os.environ ['GDAL_DATA']=path_gdal
 
+# # В случе ошибки RuntimeError: b'no arguments in initialization list'
+# # Если действие выше не помогло, то нужно задать системной переменной PROJ_LIB
+# # явный путь к окружению по аналогии ниже
+# Для настройки проекции координат, поменять на свой вариант
+
 # os.environ ['PROJ_LIB']=r'C:\Users\popova_kv\AppData\Local\Continuum\anaconda3\Library\share'
 # os.environ ['GDAL_DATA']=r'C:\Users\popova_kv\AppData\Local\Continuum\anaconda3\Library\share\gdal'
+
+import networkx as nx
+import osmnx as ox
+import pandas as pd
+import geopandas as gpd
+import shapely
+
+import wget
+import gdal, ogr
+import momepy
+from datetime import datetime
+import re
+import girs
+from girs.feat.layers import LayersReader
+import overpass
+from pyproj import Proj, transform
+
+
 
 #отключить предупреждения pandas (так быстрее считает!!!):
 pd.options.mode.chained_assignment = None
@@ -61,6 +64,46 @@ warnings.filterwarnings("ignore")
 #здесь надо указать точное название населенного пункта, проверить, совпадает ли на осм
 # проверить можно на этом сайте:
 # https://osmnames.org/
+
+import time
+import requests as req
+import urllib.request
+
+################
+def check_query():
+    cnt=1
+    while True:
+        url_kill = 'http://overpass-api.de/api/kill_my_queries'
+        response = urllib.request.urlopen(url_kill)
+        url='http://overpass-api.de/api/status'
+        resp = req.get(url)
+        txt_resp = resp.text
+        lst_str = txt_resp.split("\n")
+        
+        del response, resp
+        if ('2 slots available now.' in lst_str) or ('1 slots available now.' in lst_str):
+            break
+        elif cnt == 3:
+            print("no available slots in API")
+            print("too long to wait, exit script")
+            slt_time = []
+            for lv in new_lst_str:
+                if "Slot available after" in lv:
+                    slt_time.append(lv)
+            # 
+            print(url)
+            print(url_kill)
+            print(slt_time)
+            exit()
+            break
+        else:
+            print("no available slots in API, try №:",cnt)
+            print("wait...")
+            cnt+=1
+            time.sleep(30)
+# 
+################
+check_query()
 
 print("Указать точное название населенного пункта, проверить, совпадает ли на OSM")
 
@@ -183,12 +226,17 @@ buff_km = 0
 print("Хотите задать буффер (плюс N метров вокруг полигона) для геометрии?y/n")
 answ_buff = input()
 if answ_buff == "y":
-    reg = re.compile('[^0-9]')
-    print("Введите число в метрах:")
-    buffer = input()
-    buffer = int(reg.sub('', buffer))
-    buff_km = ((int(buffer/1000)) if (buffer % 1000 == 0) else round(buffer / 1000, 2))
-    #gdf_poly = ox.gdf_from_place(place, which_result=which_res, buffer_dist=buff_dist)
+    while True:
+        try:
+            reg = re.compile('[^0-9]')
+            print("Введите число в метрах:")
+            buffer = input()
+            buffer = int(reg.sub('', buffer))
+            if buffer:
+                buff_km = ((int(buffer/1000)) if (buffer % 1000 == 0) else round(buffer / 1000, 2))
+                break
+        except:
+            print("That's not a number!")
 # 
 buff_km = str(buff_km).replace(".","")
 #################################
@@ -252,11 +300,16 @@ print('\t',str_filename)
 #get restrictions directly from api
 import pandas as pd
 import time
+import requests as req
+import urllib.request
+
 # bbox=57.4464,39.2596,57.8528,40.4750
 bbox=new_minlat,new_minlon,new_maxlat,new_maxlon
+
 print("Getting restrictions")
 print("Please, wait...")
-time.sleep(30)
+
+check_query()
 
 resrt = api.get(
 """[out:json][timeout:25];

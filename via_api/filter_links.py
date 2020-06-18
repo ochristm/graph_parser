@@ -99,11 +99,17 @@ def main(gdf_lines, gdf_poly):
 
 	# оставить только те ребра, которые внутри полигона
 	try:
-		gdf_lines = gpd.sjoin(gdf_lines, gdf_poly[['geometry']], how='inner', 
+		gdf_lines_tmp = gpd.sjoin(gdf_lines, gdf_poly[['geometry']], how='inner', 
 							  op='intersects').drop("index_right", axis=1).reset_index(drop=True)
+		#
+		if len(gdf_lines_tmp) > (len(gdf_lines) / 2):
+			gdf_lines = gdf_lines_tmp.copy()
+		gdf_lines_tmp = None
+		gdf_poly = None
+		del gdf_lines_tmp, gdf_poly
 	except:
 		pass
-
+		
 	# file_name = 'petr_kamch'
 	# read_shp = gpd.read_file(r'./shp/raw/{}.shp'.format(file_name), encoding = 'utf-8', errors='ignore')
 	sleep(pause)
@@ -313,7 +319,12 @@ def main(gdf_lines, gdf_poly):
 	except:
 		pass
 	#
-
+	#####
+	#! ATTENTION!!!
+	gdf_lines = None
+	del gdf_lines
+	sleep(pause)
+	#####
 	########################
 	# изменение направления ребра для oneway=-1
 	reverse_oneway = city_graph[city_graph.other_tags.str.contains('oneway"=>"-1', 
@@ -370,8 +381,9 @@ def main(gdf_lines, gdf_poly):
 	#
 	#################################
 	nans_g = graph_info[graph_info.osm_id.isna()]
-	nans_g = gpd.sjoin(nans_g[['geometry']], city_graph, how='left', 
-							   op='intersects').drop("index_right", axis=1).reset_index(drop=True)
+	if len (nans_g) != 0:
+		nans_g = gpd.sjoin(nans_g[['geometry']], city_graph, how='left', 
+								   op='intersects').drop("index_right", axis=1).reset_index(drop=True)
 	#
 	sleep(pause)
 
@@ -458,6 +470,12 @@ def main(gdf_lines, gdf_poly):
 		#
 		lst_uu_geo.append(new_geo)
 	# 
+	####
+	# ! ATTENTION
+	city_graph = None
+	del city_graph
+	####
+	
 	sleep(pause)
 	##############
 	#

@@ -277,97 +277,106 @@ if int(buff_km) > 0:
 
 ########################
 # creating restriction df
-df = pd.DataFrame(data=lst_one, columns=['osm_id_restr', 'restr_type', 'role', 'osm_id_graph', 'geo_type'])
+def CreateRestr(lst_one,gdf_lines):
+    df = pd.DataFrame(data=lst_one, columns=['osm_id_restr', 'restr_type', 'role', 'osm_id_graph', 'geo_type'])
 
-lst_way_via = list(df[((df.geo_type == 'way') & (df.role == 'via'))].osm_id_restr.unique())
+    lst_way_via = list(df[((df.geo_type == 'way') & (df.role == 'via'))].osm_id_restr.unique())
 
-df_ok_wnw = df[~df.osm_id_restr.isin(lst_way_via)].reset_index(drop=True)
-df_notok_www = df[df.osm_id_restr.isin(lst_way_via)].reset_index(drop=True)
+    df_ok_wnw = df[~df.osm_id_restr.isin(lst_way_via)].reset_index(drop=True)
+    df_notok_www = df[df.osm_id_restr.isin(lst_way_via)].reset_index(drop=True)
 
-df_via_out = df_notok_www[~(df_notok_www.role == 'via')].reset_index(drop=True)
+    df_via_out = df_notok_www[~(df_notok_www.role == 'via')].reset_index(drop=True)
 
-df_via_in = df_notok_www[df_notok_www.role == 'via'].reset_index(drop=True)
-df_via_in_2 = df_via_in.copy()
-df_via_in_2['role'] = '2from'
-df_via_in['role'] = '1to'
-
-
-df_from_in = df_notok_www[df_notok_www.role == 'from'].reset_index(drop=True)
-df_from_in['role'] = '1from'
-df_to_in = df_notok_www[df_notok_www.role == 'to'].reset_index(drop=True)
-df_to_in['role'] = '2to'
-
-df_new_via = df_from_in.append(df_via_in).append(df_via_in_2).append(df_to_in)
-df_new_via = df_new_via.sort_values(by=['osm_id_restr', 'role']).reset_index(drop=True)
-
-final_df_restr = df[((df.geo_type == 'way') & (~df.osm_id_restr.isin(lst_way_via)))]
-final_df_restr = final_df_restr.append(df_new_via)
-final_df_restr = final_df_restr.sort_values(by=['osm_id_restr','role']).reset_index(drop=True)
-final_df_restr = final_df_restr.rename(columns={'osm_id_graph':'osm_id'})
-final_df_restr['osm_id'] = final_df_restr['osm_id'].astype(str)
-
-#################################
-
-gdf_restr = final_df_restr.merge(gdf_lines[['osm_id','geometry']], how='left', on=['osm_id'])
-gdf_restr = gpd.GeoDataFrame(gdf_restr,geometry='geometry')
-gdf_restr.crs='epsg:4326'
-gdf_restr = gdf_restr[~gdf_restr.geometry.isna()].reset_index(drop=True)
-
-grp_fr = gdf_restr.groupby('osm_id_restr').count()['osm_id']
-grp_fr = grp_fr.reset_index()
-# if one - others arent in graph, should delete
-grp_fr = grp_fr[grp_fr.osm_id < 2]
-
-gdf_restr = gdf_restr[~gdf_restr.osm_id_restr.isin(grp_fr.osm_id_restr)].reset_index(drop=True)
+    df_via_in = df_notok_www[df_notok_www.role == 'via'].reset_index(drop=True)
+    df_via_in_2 = df_via_in.copy()
+    df_via_in_2['role'] = '2from'
+    df_via_in['role'] = '1to'
 
 
-np_gdfr = gdf_restr.to_numpy()
-ind_oir = list(gdf_restr.columns).index('osm_id_restr')
-ind_geo = list(gdf_restr.columns).index('geometry')
+    df_from_in = df_notok_www[df_notok_www.role == 'from'].reset_index(drop=True)
+    df_from_in['role'] = '1from'
+    df_to_in = df_notok_www[df_notok_www.role == 'to'].reset_index(drop=True)
+    df_to_in['role'] = '2to'
 
-lst_via_geo = []
-i=0
-for i in range(1,(len(np_gdfr)-1)):
+    df_new_via = df_from_in.append(df_via_in).append(df_via_in_2).append(df_to_in)
+    df_new_via = df_new_via.sort_values(by=['osm_id_restr', 'role']).reset_index(drop=True)
+
+    final_df_restr = df[((df.geo_type == 'way') & (~df.osm_id_restr.isin(lst_way_via)))]
+    final_df_restr = final_df_restr.append(df_new_via)
+    final_df_restr = final_df_restr.sort_values(by=['osm_id_restr','role']).reset_index(drop=True)
+    final_df_restr = final_df_restr.rename(columns={'osm_id_graph':'osm_id'})
+    final_df_restr['osm_id'] = final_df_restr['osm_id'].astype(str)
+
+    #################################
+
+    gdf_restr = final_df_restr.merge(gdf_lines[['osm_id','geometry']], how='left', on=['osm_id'])
+    gdf_restr = gpd.GeoDataFrame(gdf_restr,geometry='geometry')
+    gdf_restr.crs='epsg:4326'
+    gdf_restr = gdf_restr[~gdf_restr.geometry.isna()].reset_index(drop=True)
+
+    grp_fr = gdf_restr.groupby('osm_id_restr').count()['osm_id']
+    grp_fr = grp_fr.reset_index()
+    # if one - others arent in graph, should delete
+    grp_fr = grp_fr[grp_fr.osm_id < 2]
+
+    gdf_restr = gdf_restr[~gdf_restr.osm_id_restr.isin(grp_fr.osm_id_restr)].reset_index(drop=True)
+
+
+    np_gdfr = gdf_restr.to_numpy()
+    ind_oir = list(gdf_restr.columns).index('osm_id_restr')
+    ind_geo = list(gdf_restr.columns).index('geometry')
+
+    lst_via_geo = []
+    i=0
+    for i in range(1,(len(np_gdfr)-1)):
+        
+        if np_gdfr[i,ind_oir] == np_gdfr[i-1,ind_oir]:
+            elem_1 = i-1
+        else:
+            elem_1 = i+1
+        if np_gdfr[i,ind_geo].coords[0] == np_gdfr[elem_1,ind_geo].coords[0]:
+            p_via = Point(np_gdfr[i,ind_geo].coords[0])
+        elif np_gdfr[i,ind_geo].coords[-1] == np_gdfr[elem_1,ind_geo].coords[-1]:
+            p_via = Point(np_gdfr[i,ind_geo].coords[-1])
+        elif np_gdfr[i,ind_geo].coords[-1] == np_gdfr[elem_1,ind_geo].coords[0]:
+            p_via = Point(np_gdfr[i,ind_geo].coords[-1])
+        elif np_gdfr[i,ind_geo].coords[0] == np_gdfr[elem_1,ind_geo].coords[-1]:
+            p_via = Point(np_gdfr[i,ind_geo].coords[0])
+        else:
+            p_via = "Error"
+        lst_via_geo.append(p_via)
+    # 
+    lst_via_geo.append(lst_via_geo[-1])
+    lst_via_geo.insert(0, lst_via_geo[0])
+
+
+    # tmp_copy = gdf_restr.copy()
+    gdf_restr['p_via'] = lst_via_geo
+    lst_error = list(gdf_restr[(gdf_restr.p_via == "Error")].osm_id_restr.unique())
+    gdf_restr = gdf_restr[~gdf_restr.osm_id_restr.isin(lst_error)].reset_index(drop=True)
+    other_lines = gdf_restr.copy()
+    other_lines.crs='epsg:4326'
+    other_lines['p_via'] = other_lines['p_via'].astype(str)
+
+    other_points = gdf_restr.copy()
+    other_points.crs='epsg:4326'
+    other_points = other_points.rename(columns={'geometry':'geo_line','p_via':'geometry'})
+    other_points['geo_line'] = other_points['geo_line'].astype(str)
     
-    if np_gdfr[i,ind_oir] == np_gdfr[i-1,ind_oir]:
-        elem_1 = i-1
-    else:
-        elem_1 = i+1
-    if np_gdfr[i,ind_geo].coords[0] == np_gdfr[elem_1,ind_geo].coords[0]:
-        p_via = Point(np_gdfr[i,ind_geo].coords[0])
-    elif np_gdfr[i,ind_geo].coords[-1] == np_gdfr[elem_1,ind_geo].coords[-1]:
-        p_via = Point(np_gdfr[i,ind_geo].coords[-1])
-    elif np_gdfr[i,ind_geo].coords[-1] == np_gdfr[elem_1,ind_geo].coords[0]:
-        p_via = Point(np_gdfr[i,ind_geo].coords[-1])
-    elif np_gdfr[i,ind_geo].coords[0] == np_gdfr[elem_1,ind_geo].coords[-1]:
-        p_via = Point(np_gdfr[i,ind_geo].coords[0])
-    else:
-        p_via = "Error"
-    lst_via_geo.append(p_via)
-# 
-lst_via_geo.append(lst_via_geo[-1])
-lst_via_geo.insert(0, lst_via_geo[0])
-
-
-# tmp_copy = gdf_restr.copy()
-gdf_restr['p_via'] = lst_via_geo
-lst_error = list(gdf_restr[(gdf_restr.p_via == "Error")].osm_id_restr.unique())
-gdf_restr = gdf_restr[~gdf_restr.osm_id_restr.isin(lst_error)].reset_index(drop=True)
-other_lines = gdf_restr.copy()
-other_lines.crs='epsg:4326'
-other_lines['p_via'] = other_lines['p_via'].astype(str)
-
-other_points = gdf_restr.copy()
-other_points.crs='epsg:4326'
-other_points = other_points.rename(columns={'geometry':'geo_line','p_via':'geometry'})
-other_points['geo_line'] = other_points['geo_line'].astype(str)
+    return other_points,other_lines
 
 #
+
 #########################
 #saving to shp
 
-other_lines.to_file('{}\\other_lines_{}_{}_{}.shp'.format(path_raw_shp_layers,buff_km, place, str_date), encoding='utf-8')
-other_points.to_file('{}\\other_points_{}_{}_{}.shp'.format(path_raw_shp_layers,buff_km, place, str_date), encoding='utf-8')
+try:
+    other_points,other_lines = CreateRestr(lst_one,gdf_lines)
+    other_lines.to_file('{}\\other_lines_{}_{}_{}.shp'.format(path_raw_shp_layers,buff_km, place, str_date), encoding='utf-8')
+    other_points.to_file('{}\\other_points_{}_{}_{}.shp'.format(path_raw_shp_layers,buff_km, place, str_date), encoding='utf-8')
+except:
+    pass
+#
 # if len(other_others) > 0:
     # other_others.to_file('./data/raw/shp/layers/other_others_{}_{}_{}.shp'.format(buff_km, place, str_date), encoding='utf-8')
 #
