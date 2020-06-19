@@ -49,7 +49,7 @@ while (os.path.isfile(filename) != True):
     print("Введите путь и название нового графа, пример:")
     print(".\\data\\1701435\\20200608_1650\\res\\new_graph_2_Ярославль_20200608_1650.shp")
     filename = input()
-    filename = '.\data' + filename.split(".\data")[1]
+    #filename = '.\data' + filename.split(".\data")[1]
     if os.path.isfile(filename) == False:
         print("Файл не найден, попробуйте снова")
     # else:
@@ -57,20 +57,20 @@ while (os.path.isfile(filename) != True):
 # 
 
 try:
-	list_split = filename[:-4].rsplit("_")
-	str_date = list_split[-2] + "_" + list_split[-1]
-	place = list_split[-3]
-	buff_km = list_split[-4]
-	poly_osmid = filename.split("data\\")[1].split("\\")[0]
+    list_split = filename[:-4].rsplit("_")
+    str_date = list_split[-2] + "_" + list_split[-1]
+    place = list_split[-3]
+    buff_km = list_split[-4]
+    poly_osmid = filename.split("data\\")[1].split("\\")[0]
 except:
-	print("Enter place name:")
-	place = input()
-	if len(place) == 0:
-		place = 'city'
-	str_date = "{:%Y%m%d_%H%M}".format(datetime.now())
-	buff_km = 0
-	poly_osmid = len(filename)
-	print("place_id:",poly_osmid)
+    print("Enter place name:")
+    place = input()
+    if len(place) == 0:
+        place = 'city'
+    str_date = "{:%Y%m%d_%H%M}".format(datetime.now())
+    buff_km = 0
+    poly_osmid = len(filename)
+    print("place_id:",poly_osmid)
 #
 
 ###########################
@@ -103,23 +103,64 @@ print("time start:", time_start)
 
 ###########################
 
-new_graph = gpd.read_file(r'{}\\new_graph_{}_{}_{}.shp'.format(path_res_edges,buff_km, place, str_date), encoding = 'utf-8')
-all_nodes = gpd.read_file(r'{}\\nodes_{}_{}_{}.shp'.format(path_res_nodes,buff_km, place, str_date), encoding = 'utf-8')
+new_graph = gpd.read_file(filename, encoding = 'utf-8')
+
+try:
+    all_nodes = gpd.read_file(r'{}\\nodes_{}_{}_{}.shp'.format(path_res_nodes,buff_km, place, str_date), encoding = 'utf-8')
+except:
+    while (os.path.isfile(flnm_nodes) != True):
+        print("Введите путь и название файла с nodes.shp, пример")
+        print(".\\data\\1701435\\20200608_1650\\res\\nodes_2_Ярославль_20200608_1650.shp")
+        flnm_nodes = input()
+        #flnm_nodes = '.\data' + flnm_nodes.split(".\data")[1]
+        if os.path.isfile(flnm_nodes) == False:
+            print("Файл не найден, попробуйте снова")
+    # 
+    all_nodes = gpd.read_file(flnm_nodes, encoding = 'utf-8')
+#
+
+#Specify dtype to eliminate this error
+#DtypeWarning: Columns (4) have mixed types.Specify dtype option on import or set low_memory=False.
+dtype={'osm_id':np.int64, 'name':str, 'highway':str, 'waterway':str, 
+       'aerialway':str, 'barrier':str,'man_made':str, 'z_order':np.int64, 'other_tags':str}
+#
+try:
+    csv_ot = pd.read_csv(r'{}\\csv_{}_{}_{}.csv'.format(path_raw_csv,buff_km, place, str_date), dtype=dtype, encoding = 'utf-8', sep=';')
+except:
+    while (os.path.isfile(flnm_csv) != True):
+        print("Введите путь и название файла с csv.csv, пример")
+        print(".\\data\\1701435\\20200608_1650\\raw\\csv_2_Ярославль_20200608_1650.csv")
+        flnm_csv = input()
+        #flnm_csv = '.\data' + flnm_csv.split(".\data")[1]
+        if os.path.isfile(flnm_csv) == False:
+            print("Файл не найден, попробуйте снова")
+    # 
+    csv_ot = pd.read_csv(flnm_csv, dtype=dtype, encoding = 'utf-8', sep=';')
+#
+
+
 
 try:
     gdf_other_lines = gpd.read_file(r'{}\\other_lines_{}_{}_{}.shp'.format(path_raw_shp_layers,buff_km, place, str_date), encoding = 'utf-8')
     gdf_other_points = gpd.read_file(r'{}\\other_points_{}_{}_{}.shp'.format(path_raw_shp_layers,buff_km, place, str_date), encoding = 'utf-8')
 except:
-    lst_poi_col = ['osm_id_res','restr_type','role','osm_id','geo_type','geo_line','geometry']
-    lst_ln_col = ['osm_id_res','restr_type','role','osm_id','geo_type','p_via','geometry']
-    gdf_other_lines = gpd.GeoDataFrame(columns=lst_poi_col,data=None)
-    gdf_other_points = gpd.GeoDataFrame(columns=lst_ln_col,data=None)
+    try:
+        print("Введите название файло в запретами, если они есть")
+        print("Введите путь и название файла с other_lines.shp, пример")
+        print(".\\data\\1701435\\20200608_1650\\raw\\layers\\other_lines_2_Ярославль_20200608_1650.csv")
+        flnm_ol = input()
+        print("Введите путь и название файла с other_points.shp, пример")
+        print(".\\data\\1701435\\20200608_1650\\raw\\layers\\other_points_2_Ярославль_20200608_1650.csv")
+        flnm_op = input()
+        gdf_other_lines = gpd.read_file(flnm_ol, encoding = 'utf-8')
+        gdf_other_points = gpd.read_file(flnm_op, encoding = 'utf-8')
+    except:
+        print("Файлы не найдены, расчет будет произведен без них")
+        lst_poi_col = ['osm_id_res','restr_type','role','osm_id','geo_type','geo_line','geometry']
+        lst_ln_col = ['osm_id_res','restr_type','role','osm_id','geo_type','p_via','geometry']
+        gdf_other_lines = gpd.GeoDataFrame(columns=lst_poi_col,data=None)
+        gdf_other_points = gpd.GeoDataFrame(columns=lst_ln_col,data=None)
 #
-#Specify dtype to eliminate this error
-#DtypeWarning: Columns (4) have mixed types.Specify dtype option on import or set low_memory=False.
-dtype={'osm_id':np.int64, 'name':str, 'highway':str, 'waterway':str, 
-       'aerialway':str, 'barrier':str,'man_made':str, 'z_order':np.int64, 'other_tags':str}
-csv_ot = pd.read_csv(r'{}\\csv_{}_{}_{}.csv'.format(path_raw_csv,buff_km, place, str_date), dtype=dtype, encoding = 'utf-8', sep=';')
 
 ######
 len_elem = len(new_graph)
