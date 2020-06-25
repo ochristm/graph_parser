@@ -97,18 +97,7 @@ sleep(pause)
 
 def main(gdf_lines, gdf_poly):
 
-	# оставить только те ребра, которые внутри полигона
-	try:
-		gdf_lines_tmp = gpd.sjoin(gdf_lines, gdf_poly[['geometry']], how='inner', 
-							  op='intersects').drop("index_right", axis=1).reset_index(drop=True)
-		#
-		if len(gdf_lines_tmp) > (len(gdf_lines) / 2):
-			gdf_lines = gdf_lines_tmp.copy()
-		gdf_lines_tmp = None
-		gdf_poly = None
-		del gdf_lines_tmp, gdf_poly
-	except:
-		pass
+
 		
 	# file_name = 'petr_kamch'
 	# read_shp = gpd.read_file(r'./shp/raw/{}.shp'.format(file_name), encoding = 'utf-8', errors='ignore')
@@ -246,6 +235,23 @@ def main(gdf_lines, gdf_poly):
 		result = possible_matches.loc[possible_matches.intersects(intersecting_gdf.unary_union)]
 		return result
 	########
+	
+		# оставить только те ребра, которые внутри полигона
+	try:
+		gdf_lines_tmp = intersect_using_spatial_index(city_graph, gdf_poly[['geometry']])
+		gdf_lines_tmp = gdf_lines_tmp.reset_index(drop=True)
+		# gdf_lines_tmp = gpd.sjoin(gdf_lines, gdf_poly[['geometry']], how='inner', 
+							  # op='intersects').drop("index_right", axis=1).reset_index(drop=True)
+		#
+		if len(gdf_lines_tmp) > (len(city_graph) / 2):
+			city_graph = gdf_lines_tmp.copy()
+		gdf_lines_tmp = None
+		gdf_poly = None
+		del gdf_lines_tmp, gdf_poly
+	except:
+		pass
+	#
+	
 	#########
 	#city_graph2 = city_graph.copy()
 	cg_crs = city_graph.crs
@@ -382,7 +388,7 @@ def main(gdf_lines, gdf_poly):
 	#################################
 	nans_g = graph_info[graph_info.osm_id.isna()]
 	if len (nans_g) != 0:
-		nans_g = gpd.sjoin(nans_g[['geometry']], city_graph, how='left', 
+		nans_g = gpd.sjoin(nans_g[['geometry']], city_graph, how='inner', 
 								   op='intersects').drop("index_right", axis=1).reset_index(drop=True)
 	#
 	sleep(pause)
