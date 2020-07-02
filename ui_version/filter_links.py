@@ -378,16 +378,16 @@ def main(gdf_lines, gdf_poly):
 	res_graph = res_graph.rename(columns={0:'geometry'})
 	res_graph.crs='epsg:4326'
 	#res_graph = res_graph.to_crs('epsg:4326')
-    res_graph = res_graph.reset_index(drop=True)
-    res_graph = res_graph.reset_index()
-
+	res_graph = res_graph.reset_index(drop=True)
+	res_graph = res_graph.reset_index()
+	
 	sleep(pause)
 
 	# подтягивание полей с информацией по пересечению геометрий
 	graph_info = gpd.sjoin(res_graph, city_graph, how='left', 
 							   op='within').drop("index_right", axis=1).reset_index(drop=True)
 	#
-    del graph_info['index']
+	del graph_info['index']
 	#################################
 	nans_g = graph_info[graph_info.osm_id.isna()]
 	if len (nans_g) != 0:
