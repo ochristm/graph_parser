@@ -198,16 +198,8 @@ def main(gdf_lines, gdf_poly):
 		& (~((city_graph.highway == 'service') & (city_graph.name.isna())))
 								 ].reset_index(drop=True)
 	#
-	#############################
-	# constructions - temporary changes in the road 
-	# no name and no tags - new road, should be deleted
-	constr = city_graph[(((city_graph.highway == 'construction') 
-							  & ~(city_graph.other_tags.isna()) 
-							  & ~(city_graph.name.isna())) 
-							 | ((city_graph.other_tags.str.contains("bridge", na=False)) 
-								& (~(city_graph.name.isna()))
-								& ((city_graph.highway.isna()))))].reset_index(drop=True)
-	#
+	
+	
 	sleep(pause)
 	########
 	# https://automating-gis-processes.github.io/site/notebooks/L3/spatial_index.html
@@ -250,6 +242,18 @@ def main(gdf_lines, gdf_poly):
 		del gdf_lines_tmp, gdf_poly
 	except:
 		pass
+	#
+	
+	#############################
+	# constructions - temporary changes in the road 
+	# no name and no tags - new road, should be deleted
+	
+	constr = city_graph[(((city_graph.highway == 'construction') 
+							  & ~(city_graph.other_tags.isna()) 
+							  & ~(city_graph.name.isna())) 
+							 | ((city_graph.other_tags.str.contains("bridge", na=False)) 
+								& (~(city_graph.name.isna()))
+								& ((city_graph.highway.isna()))))].reset_index(drop=True)
 	#
 	
 	#########
