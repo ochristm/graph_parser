@@ -187,7 +187,9 @@ else:
 if int(buff_km) > 0:
     buffer = int(buff_km) * 1000
     try:
+        gdf_poly.crs='epsg:4326'
         gdf_poly.geometry = gdf_poly.geometry.to_crs('epsg:32637').buffer(buffer).to_crs('epsg:4326')
+        gdf_poly.crs='epsg:4326'
     except:
         pass
 #
